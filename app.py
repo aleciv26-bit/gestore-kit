@@ -2,17 +2,22 @@ import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 
-# Funzione per creare il PDF dell'intero CDU
+# Funzione per creare il PDF gestendo i caratteri speciali
 def crea_pdf_cdu(cdu, presidio, lista_kit_dati):
     pdf = FPDF()
     pdf.add_page()
+    
+    # Funzione per pulire i caratteri non compatibili con latin-1
+    def safe_str(text):
+        return str(text).encode('latin-1', 'replace').decode('latin-1')
+
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt=f"PRESIDIO: {presidio} - CDU: {cdu}", ln=True, align='C')
+    pdf.cell(200, 10, txt=safe_str(f"PRESIDIO: {presidio} - CDU: {cdu}"), ln=True, align='C')
     pdf.ln(10)
     
     for nome_kit, df_comp in lista_kit_dati:
         pdf.set_font("Arial", 'B', 14)
-        pdf.cell(200, 10, txt=f"Kit: {nome_kit}", ln=True)
+        pdf.cell(200, 10, txt=safe_str(f"Kit: {nome_kit}"), ln=True)
         pdf.set_font("Arial", 'B', 10)
         pdf.cell(40, 7, "FABBRICANTE", border=1)
         pdf.cell(40, 7, "CODICE", border=1)
@@ -21,17 +26,19 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati):
         
         pdf.set_font("Arial", '', 9)
         for _, row in df_comp.iterrows():
-            pdf.cell(40, 7, str(row.get('FABBRICANTE', '')), border=1)
-            pdf.cell(40, 7, str(row.get('CODICE', '')), border=1)
-            pdf.cell(110, 7, str(row.get('DESCRIZIONE', '')), border=1)
+            pdf.cell(40, 7, safe_str(row.get('FABBRICANTE', '')), border=1)
+            pdf.cell(40, 7, safe_str(row.get('CODICE', '')), border=1)
+            pdf.cell(110, 7, safe_str(row.get('DESCRIZIONE', '')), border=1)
             pdf.ln()
         pdf.ln(5)
     
-    return pdf.output(dest='S').encode('latin-1')
+    return pdf.output(dest='S')
 
+# Configurazione Pagina
 st.set_page_config(page_title="Generatore Distinte", layout="wide")
 st.title("📦 Generatore Distinte Kit Chirurgici")
 
+# Caricamento file
 uploaded_file = st.file_uploader("Carica il file Excel", type=["xlsx"])
 
 if uploaded_file:
@@ -39,13 +46,14 @@ if uploaded_file:
     df_lista = pd.read_excel(xls, sheet_name='LISTA KIT')
     df_comp = pd.read_excel(xls, sheet_name='COMPOSIZIONE KIT')
 
+    # Identificazione colonne QTA dinamica
     qta_cols = [c for c in df_lista.columns if str(c).upper().startswith(('QTA', 'Q.TA'))]
     selected_sigla = st.selectbox("Seleziona il presidio:", qta_cols)
     
     # Filtriamo per quantità > 0
     df_filtered = df_lista[pd.to_numeric(df_lista[selected_sigla], errors='coerce') > 0].copy()
     
-    # Raggruppiamo per CDU (usando la logica di priorità definita)
+    # Raggruppamento per CDU
     df_filtered['CDU_FINALE'] = df_filtered.apply(lambda row: row['NUOVO CDU'] if pd.notna(row.get('NUOVO CDU')) else row.get('CDU', 'N/A'), axis=1)
     
     for cdu, group in df_filtered.groupby('CDU_FINALE'):
