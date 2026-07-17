@@ -7,32 +7,35 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati):
     pdf = FPDF()
     pdf.add_page()
     
-    # Funzione per pulire i caratteri non compatibili con latin-1
     def safe_str(text):
         return str(text).encode('latin-1', 'replace').decode('latin-1')
 
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt=safe_str(f"PRESIDIO: {presidio} - CDU: {cdu}"), ln=True, align='C')
+    pdf.cell(0, 10, txt=safe_str(f"PRESIDIO: {presidio} - CDU: {cdu}"), ln=True, align='C')
     pdf.ln(10)
     
     for nome_kit, df_comp in lista_kit_dati:
         pdf.set_font("Arial", 'B', 14)
-        pdf.cell(200, 10, txt=safe_str(f"Kit: {nome_kit}"), ln=True)
+        pdf.cell(0, 10, txt=safe_str(f"Kit: {nome_kit}"), ln=True)
+        
+        # Intestazione tabella
         pdf.set_font("Arial", 'B', 10)
-        pdf.cell(40, 7, "FABBRICANTE", border=1)
-        pdf.cell(40, 7, "CODICE", border=1)
-        pdf.cell(110, 7, "DESCRIZIONE", border=1)
+        pdf.cell(40, 10, "FABBRICANTE", border=1)
+        pdf.cell(40, 10, "CODICE", border=1)
+        pdf.cell(110, 10, "DESCRIZIONE", border=1)
         pdf.ln()
         
+        # Dati tabella
         pdf.set_font("Arial", '', 9)
         for _, row in df_comp.iterrows():
-            pdf.cell(40, 7, safe_str(row.get('FABBRICANTE', '')), border=1)
-            pdf.cell(40, 7, safe_str(row.get('CODICE', '')), border=1)
-            pdf.cell(110, 7, safe_str(row.get('DESCRIZIONE', '')), border=1)
+            # Usiamo multi_cell o controlliamo l'altezza per evitare che il testo esca
+            pdf.cell(40, 10, safe_str(row.get('FABBRICANTE', '')), border=1)
+            pdf.cell(40, 10, safe_str(row.get('CODICE', '')), border=1)
+            pdf.cell(110, 10, safe_str(row.get('DESCRIZIONE', '')), border=1)
             pdf.ln()
-        pdf.ln(5)
+        pdf.ln(10) # Spazio tra un kit e l'altro
     
-    return pdf.output(dest='S')
+    return pdf.output(dest='S').encode('latin-1')
 
 # Configurazione Pagina
 st.set_page_config(page_title="Generatore Distinte", layout="wide")
