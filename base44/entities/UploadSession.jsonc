@@ -1,0 +1,41 @@
+{
+  "name": "UploadSession",
+  "type": "object",
+  "properties": {
+    "original_filename": {
+      "type": "string",
+      "description": "Nome del file Excel caricato"
+    },
+    "folder_name": {
+      "type": "string",
+      "description": "Cartella virtuale [DATA]_[NOME_FILE]"
+    },
+    "excel_file_uri": {
+      "type": "string",
+      "description": "URI archiviazione privata del file Excel originale"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "default": "processing"
+    },
+    "pdf_count": {
+      "type": "number",
+      "default": 0
+    },
+    "kit_count": {
+      "type": "number",
+      "default": 0
+    },
+    "error_message": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "original_filename"
+  ]
+}

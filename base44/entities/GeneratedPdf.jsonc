@@ -1,0 +1,39 @@
+{
+  "name": "GeneratedPdf",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "ID della sessione di upload di appartenenza"
+    },
+    "presidio": {
+      "type": "string",
+      "description": "Presidio di raggruppamento (un PDF per ogni Presidio)"
+    },
+    "cdu_nuovo": {
+      "type": "string",
+      "description": "CDU (opzionale, non usato nel Template Standard a PDF-per-Presidio)"
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Nome file PDF"
+    },
+    "file_uri": {
+      "type": "string",
+      "description": "URI archiviazione privata del PDF"
+    },
+    "kit_count": {
+      "type": "number",
+      "default": 0
+    },
+    "component_count": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "session_id",
+    "file_name",
+    "file_uri"
+  ]
+}
