@@ -13,11 +13,9 @@ class PDFConCartaIntestata(FPDF):
     def header(self):
         if self.carta_file and os.path.exists(self.carta_file):
             self.image(self.carta_file, x=0, y=0, w=210)
-        # Margine superiore fisso per non sovrapporsi all'intestazione grafica
         self.set_y(45)
 
     def footer(self):
-        # Footer vuoto perché l'immagine della carta intestata ha già il suo piè di pagina disegnato
         pass
 
 def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
@@ -33,7 +31,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
     pdf.ln(3)
     
     for nome_kit, sbs_val, df_comp in lista_kit_dati:
-        # Se lo spazio rimasto è inferiore a 25mm, andiamo direttamente a pagina nuova prima del kit
         if pdf.get_y() > 230:
             pdf.add_page()
 
@@ -43,20 +40,16 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
             kit_label += f" - SBS: {sbs_val}"
         pdf.cell(0, 7, txt=safe_str(kit_label), ln=True)
         
-        # Intestazione tabella
         pdf.set_font("Arial", 'B', 9)
         pdf.cell(40, 6, "FABBRICANTE", border=1)
         pdf.cell(40, 6, "CODICE", border=1)
         pdf.cell(120, 6, "DESCRIZIONE", border=1)
         pdf.ln()
         
-        # Dati tabella con controllo rigoroso dello spazio verticale (limite 245)
         pdf.set_font("Arial", '', 8)
         for _, row in df_comp.iterrows():
-            # SOGLIA DI SICUREZZA ANTISORRAPPOSIZIONE: se superiamo 245, cambia pagina
             if pdf.get_y() > 245:
                 pdf.add_page()
-                # Ristampa l'intestazione della tabella nella pagina nuova
                 pdf.set_font("Arial", 'B', 9)
                 pdf.cell(40, 6, "FABBRICANTE", border=1)
                 pdf.cell(40, 6, "CODICE", border=1)
@@ -72,7 +65,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
     
     return pdf.output(dest='S').encode('latin-1')
 
-# Configurazione Pagina Streamlit
 st.set_page_config(page_title="Generatore Distinte", layout="wide")
 st.title("📦 Generatore Distinte Kit Chirurgici")
 
@@ -99,18 +91,35 @@ if uploaded_file:
     selected_sigla = st.selectbox("Seleziona il presidio:", qta_cols)
     
     df_filtered = df_lista[pd.to_numeric(df_lista[selected_sigla], errors='coerce') > 0].copy()
+    
+    # Calcolo CDU finale in LISTA KIT
     df_filtered['CDU_FINALE'] = df_filtered.apply(lambda row: row['NUOVO CDU'] if pd.notna(row.get('NUOVO CDU')) else row.get('CDU', 'N/A'), axis=1)
     
+    # Assicuriamoci che anche in COMPOSIZIONE KIT esista una colonna CDU pulita per il confronto
+    if 'CDU' in df_comp.columns:
+        df_comp['CDU_COMP'] = df_comp['CDU'].astype(str).str.strip()
+    else:
+        df_comp['CDU_COMP'] = 'N/A'
+
     tutti_i_cdu_dati = {}
 
     for cdu, group in df_filtered.groupby('CDU_FINALE'):
         lista_kit_per_pdf = []
         for _, row in group.iterrows():
             nome_kit = row['NUOVO NOME KIT'] if pd.notna(row.get('NUOVO NOME KIT')) else row.get('NOME KIT', 'N/A')
+            nome_kit_orig = row.get('NOME KIT', 'N/A')
             
+            # FILTRO PRECISO: Cerca la composizione corrispondendo SIA il CDU finale che il Nome Kit
+            comp = df_comp[
+                (df_comp['CDU_COMP'] == str(cdu)) & 
+                (df_comp['NOME KIT'] == nome_kit_orig)
+            ].copy()
+            
+            # Se per errore nel file di composizione il CDU non è stato messo o non corrisponde, facciamo un fallback sul solo nome kit
+            if comp.empty:
+                comp = df_comp[df_comp['NOME KIT'] == nome_kit_orig].copy()
+
             sbs_val = ""
-            comp = df_comp[df_comp['NOME KIT'] == row['NOME KIT']].copy()
-            
             if 'SBS' in comp.columns and not comp['SBS'].dropna().empty:
                 sbs_val = comp['SBS'].dropna().iloc[0]
             elif 'SBS' in row and pd.notna(row['SBS']):
