@@ -17,9 +17,8 @@ class PDFConCartaIntestata(FPDF):
         self.set_y(45)
 
     def footer(self):
-        self.set_y(-25)
-        self.set_font('Arial', 'I', 8)
-        self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'R')
+        # Footer vuoto perché l'immagine della carta intestata ha già il suo piè di pagina disegnato
+        pass
 
 def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
     pdf = PDFConCartaIntestata(carta_file=carta_file)
@@ -34,8 +33,8 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
     pdf.ln(3)
     
     for nome_kit, sbs_val, df_comp in lista_kit_dati:
-        # Controllo se c'è abbastanza spazio per il titolo del kit e l'intestazione della tabella
-        if pdf.get_y() > 240:
+        # Se lo spazio rimasto è inferiore a 25mm, andiamo direttamente a pagina nuova prima del kit
+        if pdf.get_y() > 230:
             pdf.add_page()
 
         pdf.set_font("Arial", 'B', 11)
@@ -51,13 +50,13 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
         pdf.cell(120, 6, "DESCRIZIONE", border=1)
         pdf.ln()
         
-        # Dati tabella con controllo spazio riga per riga
+        # Dati tabella con controllo rigoroso dello spazio verticale (limite 245)
         pdf.set_font("Arial", '', 8)
         for _, row in df_comp.iterrows():
-            # Se siamo troppo vicini al fondo pagina (es. y > 265), forza un cambio pagina pulito
-            if pdf.get_y() > 265:
+            # SOGLIA DI SICUREZZA ANTISORRAPPOSIZIONE: se superiamo 245, cambia pagina
+            if pdf.get_y() > 245:
                 pdf.add_page()
-                # Ristampa l'intestazione della tabella nella nuova pagina per continuità
+                # Ristampa l'intestazione della tabella nella pagina nuova
                 pdf.set_font("Arial", 'B', 9)
                 pdf.cell(40, 6, "FABBRICANTE", border=1)
                 pdf.cell(40, 6, "CODICE", border=1)
