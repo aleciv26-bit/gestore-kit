@@ -91,13 +91,14 @@ if uploaded_file:
     selected_sigla = st.selectbox("Seleziona il presidio:", qta_cols)
     
     df_filtered = df_lista[pd.to_numeric(df_lista[selected_sigla], errors='coerce') > 0].copy()
-    
-    # Calcolo CDU finale in LISTA KIT
     df_filtered['CDU_FINALE'] = df_filtered.apply(lambda row: row['NUOVO CDU'] if pd.notna(row.get('NUOVO CDU')) else row.get('CDU', 'N/A'), axis=1)
     
-    # Assicuriamoci che anche in COMPOSIZIONE KIT esista una colonna CDU pulita per il confronto
-    if 'CDU' in df_comp.columns:
-        df_comp['CDU_COMP'] = df_comp['CDU'].astype(str).str.strip()
+    # Gestione flessibile delle colonne nel foglio di composizione
+    comp_cdu_col = 'CDU' if 'CDU' in df_comp.columns else ('NUOVO CDU' if 'NUOVO CDU' in df_comp.columns else None)
+    comp_kit_col = 'NOME KIT' if 'NOME KIT' in df_comp.columns else ('NUOVO NOME KIT' if 'NUOVO NOME KIT' in df_comp.columns else None)
+
+    if comp_cdu_col:
+        df_comp['CDU_COMP'] = df_comp[comp_cdu_col].astype(str).str.strip()
     else:
         df_comp['CDU_COMP'] = 'N/A'
 
@@ -109,15 +110,19 @@ if uploaded_file:
             nome_kit = row['NUOVO NOME KIT'] if pd.notna(row.get('NUOVO NOME KIT')) else row.get('NOME KIT', 'N/A')
             nome_kit_orig = row.get('NOME KIT', 'N/A')
             
-            # FILTRO PRECISO: Cerca la composizione corrispondendo SIA il CDU finale che il Nome Kit
-            comp = df_comp[
-                (df_comp['CDU_COMP'] == str(cdu)) & 
-                (df_comp['NOME KIT'] == nome_kit_orig)
-            ].copy()
-            
-            # Se per errore nel file di composizione il CDU non è stato messo o non corrisponde, facciamo un fallback sul solo nome kit
-            if comp.empty:
-                comp = df_comp[df_comp['NOME KIT'] == nome_kit_orig].copy()
+            # Ricerca nel foglio di composizione usando la colonna corretta trovata
+            if comp_kit_col:
+                comp = df_comp[
+                    (df_comp['CDU_COMP'] == str(cdu)) & 
+                    ((df_comp[comp_kit_col] == nome_kit_orig) | (df_comp[comp_kit_col] == nome_kit))
+                ].copy()
+                
+                if comp.empty:
+                    comp = df_comp[
+                        (df_comp[comp_kit_col] == nome_kit_orig) | (df_comp[comp_kit_col] == nome_kit)
+                    ].copy()
+            else:
+                comp = pd.DataFrame()
 
             sbs_val = ""
             if 'SBS' in comp.columns and not comp['SBS'].dropna().empty:
