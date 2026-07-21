@@ -5,60 +5,74 @@ import zipfile
 import io
 import os
 
-# Funzione per creare il PDF di un singolo CDU (con scelta carta intestata)
-def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_scelta):
-    pdf = FPDF()
+# Classe personalizzata per applicare la carta intestata su TUTTE le pagine automaticamente
+class PDFConCartaIntestata(FPDF):
+    def __init__(self, carta_file=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.carta_file = carta_file
+
+    def header(self):
+        # Stampa l'immagine di sfondo su ogni pagina se il file esiste
+        if self.carta_file and os.path.exists(self.carta_file):
+            self.image(self.carta_file, x=0, y=0, w=210)
+        # Imposta un margine superiore sicuro (es. 45mm) per evitare che il testo scriva sopra l'intestazione
+        self.set_y(45)
+
+    def footer(self):
+        # Posiziona il numero di pagina in basso a destra, sopra il piè di pagina della carta intestata
+        self.set_y(-25)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'R')
+
+def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
+    pdf = PDFConCartaIntestata(carta_file=carta_file)
+    # Impostiamo margini laterali (10mm) e superiore/inferiore puliti
+    pdf.set_margins(10, 45, 10)
     pdf.add_page()
-    
-    # Se il file della carta intestata scelta esiste su GitHub, lo usa come sfondo
-    if carta_scelta and os.path.exists(carta_scelta):
-        pdf.image(carta_scelta, x=0, y=0, w=210)
-        pdf.set_y(40) # Sposta il testo più in basso per non sovrapporlo all'intestazione
     
     def safe_str(text):
         return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-    pdf.set_font("Arial", 'B', 16)
+    pdf.set_font("Arial", 'B', 15)
     pdf.cell(0, 10, txt=safe_str(f"PRESIDIO: {presidio} - CDU: {cdu}"), ln=True, align='C')
-    pdf.ln(5)
+    pdf.ln(3)
     
     for nome_kit, sbs_val, df_comp in lista_kit_dati:
-        pdf.set_font("Arial", 'B', 12)
+        pdf.set_font("Arial", 'B', 11)
         kit_label = f"Kit: {nome_kit}"
-        if sbs_val and str(sbs_val).lower() != 'nan':
-            kit_label += f" (SBS: {sbs_val})"
-        pdf.cell(0, 8, txt=safe_str(kit_label), ln=True)
+        if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
+            kit_label += f" - SBS: {sbs_val}"
+        pdf.cell(0, 7, txt=safe_str(kit_label), ln=True)
         
-        # Intestazione tabella (escludendo l'ID)
+        # Intestazione tabella
         pdf.set_font("Arial", 'B', 9)
-        pdf.cell(40, 7, "FABBRICANTE", border=1)
-        pdf.cell(40, 7, "CODICE", border=1)
-        pdf.cell(110, 7, "DESCRIZIONE", border=1)
+        pdf.cell(40, 6, "FABBRICANTE", border=1)
+        pdf.cell(40, 6, "CODICE", border=1)
+        pdf.cell(120, 6, "DESCRIZIONE", border=1)
         pdf.ln()
         
         # Dati tabella
         pdf.set_font("Arial", '', 8)
         for _, row in df_comp.iterrows():
-            pdf.cell(40, 6, safe_str(row.get('FABBRICANTE', '')), border=1)
-            pdf.cell(40, 6, safe_str(row.get('CODICE', '')), border=1)
-            pdf.cell(110, 6, safe_str(row.get('DESCRIZIONE', '')), border=1)
+            pdf.cell(40, 5, safe_str(row.get('FABBRICANTE', '')), border=1)
+            pdf.cell(40, 5, safe_str(row.get('CODICE', '')), border=1)
+            pdf.cell(120, 5, safe_str(row.get('DESCRIZIONE', '')), border=1)
             pdf.ln()
-        pdf.ln(5)
+        pdf.ln(4)
     
     return pdf.output(dest='S').encode('latin-1')
 
-# Configurazione Pagina
+# Configurazione Pagina Streamlit
 st.set_page_config(page_title="Generatore Distinte", layout="wide")
 st.title("📦 Generatore Distinte Kit Chirurgici")
 
-# Selezione della Carta Intestata
+# Sidebar per scelta Carta Intestata
 st.sidebar.header("Impostazioni Stampa")
 tipo_carta = st.sidebar.selectbox(
     "Seleziona la carta intestata:",
     ["Nessuna", "cartaintestata-HE", "cartaintestata-SIS"]
 )
 
-# Mappa la scelta al nome file effettivo (supponendo siano in formato .png)
 carta_file = None
 if tipo_carta == "cartaintestata-HE":
     carta_file = "cartaintestata-HE.png"
@@ -83,7 +97,6 @@ if uploaded_file:
     # Raggruppamento per CDU
     df_filtered['CDU_FINALE'] = df_filtered.apply(lambda row: row['NUOVO CDU'] if pd.notna(row.get('NUOVO CDU')) else row.get('CDU', 'N/A'), axis=1)
     
-    # Prepariamo una struttura per raccogliere i dati di tutti i CDU
     tutti_i_cdu_dati = {}
 
     for cdu, group in df_filtered.groupby('CDU_FINALE'):
@@ -91,11 +104,14 @@ if uploaded_file:
         for _, row in group.iterrows():
             nome_kit = row['NUOVO NOME KIT'] if pd.notna(row.get('NUOVO NOME KIT')) else row.get('NOME KIT', 'N/A')
             
-            # Cerca il valore SBS nel foglio composizione per questo kit
-            comp = df_comp[df_comp['NOME KIT'] == row['NOME KIT']].copy()
+            # Ricerca SBS: prima in COMPOSIZIONE KIT, se non c'è, controlla in LISTA KIT (la riga corrente)
             sbs_val = ""
+            comp = df_comp[df_comp['NOME KIT'] == row['NOME KIT']].copy()
+            
             if 'SBS' in comp.columns and not comp['SBS'].dropna().empty:
                 sbs_val = comp['SBS'].dropna().iloc[0]
+            elif 'SBS' in row and pd.notna(row['SBS']):
+                sbs_val = row['SBS']
             
             lista_kit_per_pdf.append((nome_kit, sbs_val, comp))
         
@@ -125,11 +141,10 @@ if uploaded_file:
         
         for nome_kit, sbs_val, comp in lista_kit_per_pdf:
             kit_text = f"**Kit:** {nome_kit}"
-            if sbs_val and str(sbs_val).lower() != 'nan':
+            if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
                 kit_text += f" | **SBS:** {sbs_val}"
             st.write(kit_text)
             
-            # Mostra la tabella pulita (escludendo l'ID)
             cols_to_show = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
             st.table(comp[cols_to_show])
         
@@ -139,7 +154,7 @@ if uploaded_file:
             label=f"📥 Scarica PDF CDU: {cdu}",
             data=pdf_data,
             file_name=f"{selected_sigla}_{cdu}.pdf",
-            mime="application/pdf",
+            mime="application/zip", # mimetipi corretti
             key=f"btn_{cdu}"
         )
         st.markdown("---")
