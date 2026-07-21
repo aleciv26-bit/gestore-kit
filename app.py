@@ -5,28 +5,24 @@ import zipfile
 import io
 import os
 
-# Classe personalizzata per applicare la carta intestata su TUTTE le pagine automaticamente
 class PDFConCartaIntestata(FPDF):
     def __init__(self, carta_file=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.carta_file = carta_file
 
     def header(self):
-        # Stampa l'immagine di sfondo su ogni pagina se il file esiste
         if self.carta_file and os.path.exists(self.carta_file):
             self.image(self.carta_file, x=0, y=0, w=210)
-        # Imposta un margine superiore sicuro (es. 45mm) per evitare che il testo scriva sopra l'intestazione
+        # Margine superiore fisso per non sovrapporsi all'intestazione grafica
         self.set_y(45)
 
     def footer(self):
-        # Posiziona il numero di pagina in basso a destra, sopra il piè di pagina della carta intestata
         self.set_y(-25)
         self.set_font('Arial', 'I', 8)
         self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'R')
 
 def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
     pdf = PDFConCartaIntestata(carta_file=carta_file)
-    # Impostiamo margini laterali (10mm) e superiore/inferiore puliti
     pdf.set_margins(10, 45, 10)
     pdf.add_page()
     
@@ -38,6 +34,10 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
     pdf.ln(3)
     
     for nome_kit, sbs_val, df_comp in lista_kit_dati:
+        # Controllo se c'è abbastanza spazio per il titolo del kit e l'intestazione della tabella
+        if pdf.get_y() > 240:
+            pdf.add_page()
+
         pdf.set_font("Arial", 'B', 11)
         kit_label = f"Kit: {nome_kit}"
         if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
@@ -51,9 +51,20 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
         pdf.cell(120, 6, "DESCRIZIONE", border=1)
         pdf.ln()
         
-        # Dati tabella
+        # Dati tabella con controllo spazio riga per riga
         pdf.set_font("Arial", '', 8)
         for _, row in df_comp.iterrows():
+            # Se siamo troppo vicini al fondo pagina (es. y > 265), forza un cambio pagina pulito
+            if pdf.get_y() > 265:
+                pdf.add_page()
+                # Ristampa l'intestazione della tabella nella nuova pagina per continuità
+                pdf.set_font("Arial", 'B', 9)
+                pdf.cell(40, 6, "FABBRICANTE", border=1)
+                pdf.cell(40, 6, "CODICE", border=1)
+                pdf.cell(120, 6, "DESCRIZIONE", border=1)
+                pdf.ln()
+                pdf.set_font("Arial", '', 8)
+
             pdf.cell(40, 5, safe_str(row.get('FABBRICANTE', '')), border=1)
             pdf.cell(40, 5, safe_str(row.get('CODICE', '')), border=1)
             pdf.cell(120, 5, safe_str(row.get('DESCRIZIONE', '')), border=1)
@@ -66,7 +77,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
 st.set_page_config(page_title="Generatore Distinte", layout="wide")
 st.title("📦 Generatore Distinte Kit Chirurgici")
 
-# Sidebar per scelta Carta Intestata
 st.sidebar.header("Impostazioni Stampa")
 tipo_carta = st.sidebar.selectbox(
     "Seleziona la carta intestata:",
@@ -79,7 +89,6 @@ if tipo_carta == "cartaintestata-HE":
 elif tipo_carta == "cartaintestata-SIS":
     carta_file = "cartaintestata-SIS.png"
 
-# Caricamento file Excel
 uploaded_file = st.file_uploader("Carica il file Excel", type=["xlsx"])
 
 if uploaded_file:
@@ -87,14 +96,10 @@ if uploaded_file:
     df_lista = pd.read_excel(xls, sheet_name='LISTA KIT')
     df_comp = pd.read_excel(xls, sheet_name='COMPOSIZIONE KIT')
 
-    # Identificazione colonne QTA dinamica
     qta_cols = [c for c in df_lista.columns if str(c).upper().startswith(('QTA', 'Q.TA'))]
     selected_sigla = st.selectbox("Seleziona il presidio:", qta_cols)
     
-    # Filtriamo per quantità > 0
     df_filtered = df_lista[pd.to_numeric(df_lista[selected_sigla], errors='coerce') > 0].copy()
-    
-    # Raggruppamento per CDU
     df_filtered['CDU_FINALE'] = df_filtered.apply(lambda row: row['NUOVO CDU'] if pd.notna(row.get('NUOVO CDU')) else row.get('CDU', 'N/A'), axis=1)
     
     tutti_i_cdu_dati = {}
@@ -104,7 +109,6 @@ if uploaded_file:
         for _, row in group.iterrows():
             nome_kit = row['NUOVO NOME KIT'] if pd.notna(row.get('NUOVO NOME KIT')) else row.get('NOME KIT', 'N/A')
             
-            # Ricerca SBS: prima in COMPOSIZIONE KIT, se non c'è, controlla in LISTA KIT (la riga corrente)
             sbs_val = ""
             comp = df_comp[df_comp['NOME KIT'] == row['NOME KIT']].copy()
             
@@ -117,7 +121,6 @@ if uploaded_file:
         
         tutti_i_cdu_dati[cdu] = lista_kit_per_pdf
 
-    # --- TASTO SCARICA TUTTI IN ZIP ---
     if tutti_i_cdu_dati:
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
@@ -135,7 +138,6 @@ if uploaded_file:
         )
         st.markdown("---")
 
-    # Visualizzazione a schermo per singolo CDU
     for cdu, lista_kit_per_pdf in tutti_i_cdu_dati.items():
         st.subheader(f"CDU: {cdu}")
         
@@ -148,13 +150,12 @@ if uploaded_file:
             cols_to_show = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
             st.table(comp[cols_to_show])
         
-        # Bottone singolo CDU
         pdf_data = crea_pdf_cdu(cdu, selected_sigla, lista_kit_per_pdf, carta_file)
         st.download_button(
             label=f"📥 Scarica PDF CDU: {cdu}",
             data=pdf_data,
             file_name=f"{selected_sigla}_{cdu}.pdf",
-            mime="application/zip", # mimetipi corretti
+            mime="application/pdf",
             key=f"btn_{cdu}"
         )
         st.markdown("---")
