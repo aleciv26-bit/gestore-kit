@@ -31,24 +31,21 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             return ""
         return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-    # --- PRIMA PAGINA (COPERTINA / FRONTESPIZIO) ---
+    # --- PAGINA 1: FRONTESPIZIO ---
     pdf.set_y(55)
 
-    # 1. Titolo principale
     if titolo_custom:
         pdf.set_font("Arial", 'B', 18)
         pdf.set_text_color(26, 54, 93)
         pdf.multi_cell(0, 8, txt=safe_str(titolo_custom), align='C')
         pdf.ln(12)
 
-    # 2. Sottotitolo / Oggetto
     if sottotitolo_custom:
         pdf.set_font("Arial", 'B', 10)
         pdf.set_text_color(26, 54, 93)
         pdf.multi_cell(0, 5.5, txt=safe_str(sottotitolo_custom), align='C')
         pdf.ln(15)
 
-    # 3. Presidio Ospedaliero automatico
     nome_presidio_pulito = presidio.replace("QTA_", "").replace("QTA.", "").replace("QUANTITA_", "").replace("QUANTITA", "").strip().upper()
     if not nome_presidio_pulito:
         nome_presidio_pulito = presidio.upper()
@@ -58,12 +55,10 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     pdf.cell(0, 7, txt=safe_str(f"PRESIDIO OSPEDALIERO DI {nome_presidio_pulito}"), ln=True, align='C')
     pdf.ln(4)
 
-    # 4. Reparto dinamico basato sul CDU
     pdf.set_font("Arial", 'B', 13)
     pdf.set_text_color(26, 54, 93)
     pdf.cell(0, 7, txt=safe_str(str(cdu)), ln=True, align='C')
 
-    # 5. Sezione Data e Firma per approvazione in fondo
     pdf.set_y(225)
     pdf.set_font("Arial", '', 10)
     pdf.set_text_color(0, 0, 0)
@@ -78,15 +73,48 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     pdf.set_x(120)
     pdf.cell(60, 5, "Firma per approvazione", align='C')
 
-    # --- DALLE PAGINE SUCCESSIVE: COMPOSIZIONE KIT ---
+    # --- PAGINA 2: TABELLA RIEPILOGATIVA KIT E SBS ---
+    pdf.is_prima_pagina = False
+    pdf.set_margins(10, 45, 10)
+    pdf.add_page()
+
+    col_w_nome_kit = 140
+    col_w_sbs = 50
+    table_w_summary = col_w_nome_kit + col_w_sbs # 190 mm
+    left_margin_summary = (210 - table_w_summary) / 2
+
+    pdf.set_x(left_margin_summary)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.set_text_color(26, 54, 93)
+    pdf.cell(col_w_nome_kit, 7, "NOME KIT", border=1)
+    pdf.cell(col_w_sbs, 7, "SBS", border=1)
+    pdf.ln()
+
+    pdf.set_font("Arial", '', 9)
+    pdf.set_text_color(0, 0, 0)
+    for nome_kit, sbs_val, _, _ in lista_kit_dati:
+        pdf.set_x(left_margin_summary)
+        pdf.cell(col_w_nome_kit, 6, safe_str(nome_kit), border=1)
+        pdf.cell(col_w_sbs, 6, safe_str(sbs_val), border=1)
+        pdf.ln()
+
+    # --- PAGINA 3: TESTO INTRODUTTIVO DELLE DISTINTE ---
+    pdf.add_page()
+    pdf.set_y(60)
+    pdf.set_left_margin(20)
+    pdf.set_right_margin(20)
+    pdf.set_font("Arial", 'B', 11)
+    pdf.set_text_color(0, 0, 0)
+    pdf.multi_cell(0, 6, txt=safe_str("Di seguito si riportano le distinte di composizione di quanto precedentemente elencato, definite in accordo con i rappresentati delle specialità durante gli incontri effettuati con i nostri esperti di ottimizzazione dello strumentario chirurgico."), align='L')
+
+    # --- DALLE PAGINE SUCCESSIVE: COMPOSIZIONE DETTAGLIATA KIT ---
     col_w_qta = 18
     col_w_fab = 35
     col_w_cod = 35
     col_w_desc = 102
     
     table_total_width = col_w_qta + col_w_fab + col_w_cod + col_w_desc
-    page_width = 210
-    left_margin = (page_width - table_total_width) / 2
+    left_margin = (210 - table_total_width) / 2
 
     def stampa_intestazione():
         pdf.set_x(left_margin)
@@ -98,11 +126,9 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
         pdf.cell(col_w_desc, 6, "DESCRIZIONE", border=1)
         pdf.ln()
 
-    pdf.is_prima_pagina = False
     pdf.set_margins(left_margin, 45, left_margin)
 
-    # Ciclo sui kit: ognuno parte su una pagina nuova
-    for idx, (nome_kit, sbs_val, df_comp, qta_col_nome) in enumerate(lista_kit_dati):
+    for nome_kit, sbs_val, df_comp, qta_col_nome in lista_kit_dati:
         pdf.add_page()
 
         pdf.set_font("Arial", 'B', 11)
@@ -143,25 +169,21 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             y_start = pdf.get_y()
             current_x = x_start
             
-            # 1. Quantità
             pdf.rect(current_x, y_start, col_w_qta, row_h)
             pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_qta, 4, qta_val, border=0, align='C')
             current_x += col_w_qta
 
-            # 2. Fabbricante
             pdf.rect(current_x, y_start, col_w_fab, row_h)
             pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_fab, 4, fab, border=0, align='L')
             current_x += col_w_fab
 
-            # 3. Codice
             pdf.rect(current_x, y_start, col_w_cod, row_h)
             pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_cod, 4, cod, border=0, align='L')
             current_x += col_w_cod
 
-            # 4. Descrizione
             pdf.rect(current_x, y_start, col_w_desc, row_h)
             if lines_count <= 1:
                 pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
