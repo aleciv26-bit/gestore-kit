@@ -24,12 +24,28 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
     pdf.add_page()
     
     def safe_str(text):
+        if pd.isna(text):
+            return ""
         return str(text).encode('latin-1', 'replace').decode('latin-1')
 
     pdf.set_font("Arial", 'B', 15)
     pdf.cell(0, 10, txt=safe_str(f"PRESIDIO: {presidio} - CDU: {cdu}"), ln=True, align='C')
     pdf.ln(3)
     
+    col_w_fab = 35
+    col_w_cod = 35
+    col_w_desc = 105
+    col_w_qta = 25
+    row_h = 5
+
+    def stampa_intestazione():
+        pdf.set_font("Arial", 'B', 9)
+        pdf.cell(col_w_fab, 6, "FABBRICANTE", border=1)
+        pdf.cell(col_w_cod, 6, "CODICE", border=1)
+        pdf.cell(col_w_desc, 6, "DESCRIZIONE", border=1)
+        pdf.cell(col_w_qta, 6, "Q.TA", border=1, align='C')
+        pdf.ln()
+
     for nome_kit, sbs_val, df_comp, qta_col_nome in lista_kit_dati:
         if pdf.get_y() > 230:
             pdf.add_page()
@@ -40,34 +56,54 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
             kit_label += f" - SBS: {sbs_val}"
         pdf.cell(0, 7, txt=safe_str(kit_label), ln=True)
         
-        # Intestazione tabella con la colonna QUANTITÀ
-        pdf.set_font("Arial", 'B', 9)
-        pdf.cell(35, 6, "FABBRICANTE", border=1)
-        pdf.cell(35, 6, "CODICE", border=1)
-        pdf.cell(105, 6, "DESCRIZIONE", border=1)
-        pdf.cell(25, 6, "Q.TA", border=1, align='C')
-        pdf.ln()
+        stampa_intestazione()
         
         pdf.set_font("Arial", '', 8)
         for _, row in df_comp.iterrows():
-            if pdf.get_y() > 245:
+            fab = safe_str(row.get('FABBRICANTE', ''))
+            cod = safe_str(row.get('CODICE', ''))
+            desc = safe_str(row.get('DESCRIZIONE', ''))
+            qta_val = safe_str(row.get(qta_col_nome, '')) if qta_col_nome else ''
+
+            # Calcoliamo quante righe occupa la descrizione lunga per adattare l'altezza della riga
+            pdf.set_font("Arial", '', 8)
+            nb_lines = pdf.get_string_width(desc) / (col_w_desc - 2)
+            # Stima approssimativa delle righe necessarie (minimo 1)
+            lines_count = max(1, int(nb_lines) + (1 if nb_lines % 1 > 0 else 0))
+            # Se la descrizione è particolarmente lunga in termini di caratteri, diamo un margine sicuro
+            if len(desc) > 45:
+                lines_count = max(lines_count, int(len(desc) / 45) + 1)
+            
+            current_row_h = max(5, lines_count * 4)
+
+            if pdf.get_y() + current_row_h > 245:
                 pdf.add_page()
-                # Ristampa intestazione tabella a pagina nuova
-                pdf.set_font("Arial", 'B', 9)
-                pdf.cell(35, 6, "FABBRICANTE", border=1)
-                pdf.cell(35, 6, "CODICE", border=1)
-                pdf.cell(105, 6, "DESCRIZIONE", border=1)
-                pdf.cell(25, 6, "Q.TA", border=1, align='C')
-                pdf.ln()
+                stampa_intestazione()
                 pdf.set_font("Arial", '', 8)
 
-            qta_val = row.get(qta_col_nome, '') if qta_col_nome else ''
+            x_start = pdf.get_x()
+            y_start = pdf.get_y()
 
-            pdf.cell(35, 5, safe_str(row.get('FABBRICANTE', '')), border=1)
-            pdf.cell(35, 5, safe_str(row.get('CODICE', '')), border=1)
-            pdf.cell(105, 5, safe_str(row.get('DESCRIZIONE', '')), border=1)
-            pdf.cell(25, 5, safe_str(qta_val), border=1, align='C')
-            pdf.ln()
+            # Stampiamo le celle con altezza dinamica
+            pdf.rect(x_start, y_start, col_w_fab, current_row_h)
+            pdf.rect(x_start + col_w_fab, y_start, col_w_cod, current_row_h)
+            pdf.rect(x_start + col_w_fab + col_w_cod, y_start, col_w_desc, current_row_h)
+            pdf.rect(x_start + col_w_fab + col_w_cod + col_w_desc, y_start, col_w_qta, current_row_h)
+
+            pdf.set_xy(x_start, y_start + (current_row_h - 4) / 2)
+            pdf.cell(col_w_fab, 4, fab, border=0)
+            pdf.set_xy(x_start + col_w_fab, y_start + (current_row_h - 4) / 2)
+            pdf.cell(col_w_cod, 4, cod, border=0)
+            
+            pdf.set_xy(x_start + col_w_fab + col_w_cod, y_start + 1)
+            pdf.multi_cell(col_w_desc, 3.5, desc, border=0, align='L')
+            
+            pdf.set_xy(x_start + col_w_fab + col_w_cod + col_w_desc, y_start + (current_row_h - 4) / 2)
+            pdf.cell(col_w_qta, 4, qta_val, border=0, align='C')
+
+            pdf.set_xy(x_start, y_start + current_row_h)
+            pdf.ln(0)
+
         pdf.ln(4)
     
     return pdf.output(dest='S').encode('latin-1')
@@ -103,8 +139,7 @@ if uploaded_file:
     comp_cdu_col = 'CDU' if 'CDU' in df_comp.columns else ('NUOVO CDU' if 'NUOVO CDU' in df_comp.columns else None)
     comp_kit_col = 'NOME KIT' if 'NOME KIT' in df_comp.columns else ('NUOVO NOME KIT' if 'NUOVO NOME KIT' in df_comp.columns else None)
     
-    # Riconoscimento automatico della colonna quantità nel foglio di composizione
-    possible_qta_names = [c for c in df_comp.columns if any(x in str(c).upper() for x in ['QTA', 'Q.TA', 'QUANTIT'] )]
+    possible_qta_names = [c for c in df_comp.columns if any(x in str(c).upper() for x in ['QTA', 'Q.TA', 'QUANTIT', 'QUANTITA', 'NUMERO'] )]
     comp_qta_col = possible_qta_names[0] if possible_qta_names else None
 
     if comp_cdu_col:
