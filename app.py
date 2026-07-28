@@ -15,7 +15,6 @@ class PDFConCopertinaEIntestata(FPDF):
         if self.carta_file and os.path.exists(self.carta_file):
             self.image(self.carta_file, x=0, y=0, w=210)
         
-        # Dalla seconda pagina in poi, impostiamo il margine superiore standard
         if not self.is_prima_pagina:
             self.set_y(45)
 
@@ -33,24 +32,23 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
         return str(text).encode('latin-1', 'replace').decode('latin-1')
 
     # --- PRIMA PAGINA (COPERTINA / FRONTESPIZIO) ---
-    pdf.set_y(55) # Spazio sotto l'immagine della carta intestata
+    pdf.set_y(55)
 
-    # 1. Titolo principale (es. Azienda ULSS n. 5 Polesana)
+    # 1. Titolo principale
     if titolo_custom:
         pdf.set_font("Arial", 'B', 18)
-        pdf.set_text_color(26, 54, 93) # Blu scuro elegante
+        pdf.set_text_color(26, 54, 93)
         pdf.multi_cell(0, 8, txt=safe_str(titolo_custom), align='C')
         pdf.ln(12)
 
-    # 2. Sottotitolo / Oggetto (es. PROGETTAZIONE...)
+    # 2. Sottotitolo / Oggetto
     if sottotitolo_custom:
         pdf.set_font("Arial", 'B', 10)
         pdf.set_text_color(26, 54, 93)
         pdf.multi_cell(0, 5.5, txt=safe_str(sottotitolo_custom), align='C')
         pdf.ln(15)
 
-    # 3. Presidio Ospedaliero automatico (es. PRESIDIO OSPEDALIERO DI ADRIA)
-    # Puliamo la stringa del presidio (es. "QTA_ADRIA" -> "ADRIA")
+    # 3. Presidio Ospedaliero automatico
     nome_presidio_pulito = presidio.replace("QTA_", "").replace("QTA.", "").replace("QUANTITA_", "").replace("QUANTITA", "").strip().upper()
     if not nome_presidio_pulito:
         nome_presidio_pulito = presidio.upper()
@@ -60,17 +58,16 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     pdf.cell(0, 7, txt=safe_str(f"PRESIDIO OSPEDALIERO DI {nome_presidio_pulito}"), ln=True, align='C')
     pdf.ln(4)
 
-    # 4. Reparto automatico (es. SO GINECOLOGIA)
+    # 4. Reparto dinamico basato sul CDU (es. SO CH. VASCOLARE)
     pdf.set_font("Arial", 'B', 13)
     pdf.set_text_color(26, 54, 93)
-    pdf.cell(0, 7, txt=safe_str("SO GINECOLOGIA"), ln=True, align='C')
+    pdf.cell(0, 7, txt=safe_str(str(cdu)), ln=True, align='C')
 
-    # 5. Sezione Data e Firma per approvazione in fondo alla prima pagina
+    # 5. Sezione Data e Firma per approvazione in fondo
     pdf.set_y(225)
     pdf.set_font("Arial", '', 10)
     pdf.set_text_color(0, 0, 0)
     
-    # Linee per data e firma
     y_firma = pdf.get_y()
     pdf.line(30, y_firma, 90, y_firma)
     pdf.line(120, y_firma, 180, y_firma)
@@ -82,23 +79,28 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     pdf.cell(60, 5, "Firma per approvazione", align='C')
 
     # --- DALLE PAGINE SUCCESSIVE: COMPOSIZIONE KIT ---
+    # Dimensioni colonne ottimizzate per una larghezza totale di 190mm (centrato tra X=10 e X=200)
+    col_w_qta = 18
     col_w_fab = 35
     col_w_cod = 35
-    col_w_desc = 105
-    col_w_qta = 25
+    col_w_desc = 102
+    
+    table_total_width = col_w_qta + col_w_fab + col_w_cod + col_w_desc # 190 mm
+    page_width = 210
+    left_margin = (page_width - table_total_width) / 2 # 10 mm esatti
 
     def stampa_intestazione():
+        pdf.set_x(left_margin)
         pdf.set_font("Arial", 'B', 9)
         pdf.set_text_color(0, 0, 0)
+        pdf.cell(col_w_qta, 6, "Q.TA", border=1, align='C')
         pdf.cell(col_w_fab, 6, "FABBRICANTE", border=1)
         pdf.cell(col_w_cod, 6, "CODICE", border=1)
         pdf.cell(col_w_desc, 6, "DESCRIZIONE", border=1)
-        pdf.cell(col_w_qta, 6, "Q.TA", border=1, align='C')
         pdf.ln()
 
-    # Passiamo alla pagina successiva per i kit
     pdf.is_prima_pagina = False
-    pdf.set_margins(10, 45, 10)
+    pdf.set_margins(left_margin, 45, left_margin)
     pdf.add_page()
 
     # Titolo di testata per i kit
@@ -125,9 +127,18 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             fab = safe_str(row.get('FABBRICANTE', ''))
             cod = safe_str(row.get('CODICE', ''))
             desc = safe_str(row.get('DESCRIZIONE', ''))
-            qta_val = safe_str(row.get(qta_col_nome, '')) if qta_col_nome else ''
+            
+            # Gestione quantità come numero intero senza virgola
+            qta_raw = row.get(qta_col_nome, '') if qta_col_nome else ''
+            try:
+                if pd.notna(qta_raw) and str(qta_raw).strip() != '':
+                    qta_val = str(int(float(qta_raw)))
+                else:
+                    qta_val = ""
+            except:
+                qta_val = safe_str(qta_raw)
 
-            chars_per_line = 50
+            chars_per_line = 48
             lines_count = max(1, int(len(desc) / chars_per_line) + (1 if len(desc) % chars_per_line > 0 else 0))
             row_h = max(6, lines_count * 4.5 + 2)
 
@@ -136,23 +147,29 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
                 stampa_intestazione()
                 pdf.set_font("Arial", '', 8)
 
-            x_start = pdf.get_x()
+            x_start = left_margin
             y_start = pdf.get_y()
             current_x = x_start
             
-            # Fabbricante
+            # 1. Quantità (Prima colonna)
+            pdf.rect(current_x, y_start, col_w_qta, row_h)
+            pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
+            pdf.cell(col_w_qta, 4, qta_val, border=0, align='C')
+            current_x += col_w_qta
+
+            # 2. Fabbricante
             pdf.rect(current_x, y_start, col_w_fab, row_h)
             pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_fab, 4, fab, border=0, align='L')
             current_x += col_w_fab
 
-            # Codice
+            # 3. Codice
             pdf.rect(current_x, y_start, col_w_cod, row_h)
             pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_cod, 4, cod, border=0, align='L')
             current_x += col_w_cod
 
-            # Descrizione
+            # 4. Descrizione
             pdf.rect(current_x, y_start, col_w_desc, row_h)
             if lines_count <= 1:
                 pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
@@ -160,12 +177,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             else:
                 pdf.set_xy(current_x, y_start + 1.5)
                 pdf.multi_cell(col_w_desc, 4, desc, border=0, align='L')
-            current_x += col_w_desc
-
-            # Quantità
-            pdf.rect(current_x, y_start, col_w_qta, row_h)
-            pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
-            pdf.cell(col_w_qta, 4, qta_val, border=0, align='C')
 
             pdf.set_xy(x_start, y_start + row_h)
             pdf.ln(0)
@@ -278,7 +289,13 @@ if uploaded_file:
                 kit_text += f" | **SBS:** {sbs_val}"
             st.write(kit_text)
             
-            cols_to_show = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE', qta_col_nome] if c and c in comp.columns]
+            # Mostriamo la tabella a schermo con la quantità spostata in prima posizione per coerenza visiva
+            if qta_col_nome and qta_col_nome in comp.columns:
+                other_cols = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
+                cols_to_show = [qta_col_nome] + other_cols
+            else:
+                cols_to_show = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
+                
             st.table(comp[cols_to_show])
         
         pdf_data = crea_pdf_cdu(cdu, selected_sigla, lista_kit_per_pdf, carta_file, titolo_custom, sottotitolo_custom)
