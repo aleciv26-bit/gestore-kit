@@ -5,7 +5,7 @@ import zipfile
 import io
 import os
 
-class PDFConCopertinaEIntestata(FPDF):
+class PDFConPaginazioneEIntestata(FPDF):
     def __init__(self, carta_file=None, is_prima_pagina=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.carta_file = carta_file
@@ -19,10 +19,16 @@ class PDFConCopertinaEIntestata(FPDF):
             self.set_y(45)
 
     def footer(self):
-        pass
+        # Stampa il numero di pagina in basso al centro in tutte le pagine
+        self.set_y(-15)
+        self.set_font("Arial", '', 8)
+        self.set_text_color(100, 100, 100)
+        page_str = f"Pag. {self.page_no()} di {{nb}}"
+        self.cell(0, 10, page_str, align='C')
 
 def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sottotitolo_custom):
-    pdf = PDFConCopertinaEIntestata(carta_file=carta_file, is_prima_pagina=True)
+    pdf = PDFConPaginazioneEIntestata(carta_file=carta_file, is_prima_pagina=True)
+    pdf.alias_nb_pages() # Attiva il conteggio totale delle pagine {nb}
     pdf.set_margins(10, 20, 10)
     pdf.add_page()
     
@@ -80,7 +86,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
 
     col_w_nome_kit = 140
     col_w_sbs = 50
-    table_w_summary = col_w_nome_kit + col_w_sbs # 190 mm
+    table_w_summary = col_w_nome_kit + col_w_sbs
     left_margin_summary = (210 - table_w_summary) / 2
 
     pdf.set_x(left_margin_summary)
@@ -131,17 +137,22 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     for nome_kit, sbs_val, df_comp, qta_col_nome in lista_kit_dati:
         pdf.add_page()
 
-        pdf.set_font("Arial", 'B', 11)
-        pdf.set_text_color(0, 0, 0)
-        kit_label = f"Kit: {nome_kit}"
-        if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
-            kit_label += f" - SBS: {sbs_val}"
-        pdf.cell(0, 7, txt=safe_str(kit_label), ln=True)
-        pdf.ln(2)
+        # Nome kit in evidenza (più grande)
+        pdf.set_font("Arial", 'B', 13)
+        pdf.set_text_color(26, 54, 93)
+        pdf.cell(0, 6, txt=safe_str(f"Kit: {nome_kit}"), ln=True)
         
+        # SBS in evidenza secondaria (subito sotto, leggermente più piccolo)
+        if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
+            pdf.set_font("Arial", 'B', 10)
+            pdf.set_text_color(100, 100, 100)
+            pdf.cell(0, 5, txt=safe_str(f"SBS: {sbs_val}"), ln=True)
+        
+        pdf.ln(3)
         stampa_intestazione()
         
         pdf.set_font("Arial", '', 8)
+        pdf.set_text_color(0, 0, 0)
         for _, row in df_comp.iterrows():
             fab = safe_str(row.get('FABBRICANTE', ''))
             cod = safe_str(row.get('CODICE', ''))
