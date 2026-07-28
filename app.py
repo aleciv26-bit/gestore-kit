@@ -19,16 +19,15 @@ class PDFConPaginazioneEIntestata(FPDF):
             self.set_y(45)
 
     def footer(self):
-        # Stampa il numero di pagina in basso al centro in tutte le pagine
         self.set_y(-15)
         self.set_font("Arial", '', 8)
         self.set_text_color(100, 100, 100)
         page_str = f"Pag. {self.page_no()} di {{nb}}"
         self.cell(0, 10, page_str, align='C')
 
-def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sottotitolo_custom):
+def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sottotitolo_custom, mostra_qta_richieste):
     pdf = PDFConPaginazioneEIntestata(carta_file=carta_file, is_prima_pagina=True)
-    pdf.alias_nb_pages() # Attiva il conteggio totale delle pagine {nb}
+    pdf.alias_nb_pages()
     pdf.set_margins(10, 20, 10)
     pdf.add_page()
     
@@ -98,7 +97,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
 
     pdf.set_font("Arial", '', 9)
     pdf.set_text_color(0, 0, 0)
-    for nome_kit, sbs_val, _, _ in lista_kit_dati:
+    for nome_kit, sbs_val, _, _, _ in lista_kit_dati:
         pdf.set_x(left_margin_summary)
         pdf.cell(col_w_nome_kit, 6, safe_str(nome_kit), border=1)
         pdf.cell(col_w_sbs, 6, safe_str(sbs_val), border=1)
@@ -134,19 +133,44 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
 
     pdf.set_margins(left_margin, 45, left_margin)
 
-    for nome_kit, sbs_val, df_comp, qta_col_nome in lista_kit_dati:
+    for nome_kit, sbs_val, df_comp, qta_col_nome, qta_richiesta in lista_kit_dati:
         pdf.add_page()
 
-        # Nome kit in evidenza (più grande)
+        # Titolo Kit + Quantità Kit Richiesti (se abilitato)
+        titolo_stringa = f"Kit: {nome_kit}"
+        if mostra_qta_richieste and qta_richiesta is not None and str(qta_richiesta).strip() != '':
+            titolo_stringa += f"  -  Quantità kit richiesti: {qta_richiesta}"
+
         pdf.set_font("Arial", 'B', 13)
         pdf.set_text_color(26, 54, 93)
-        pdf.cell(0, 6, txt=safe_str(f"Kit: {nome_kit}"), ln=True)
+        pdf.cell(0, 6, txt=safe_str(titolo_stringa), ln=True)
         
-        # SBS in evidenza secondaria (subito sotto, leggermente più piccolo)
+        # Calcolo DM totali (somma delle quantità dei dispositivi nella tabella)
+        dm_totali = 0
+        if qta_col_nome and not df_comp.empty and qta_col_nome in df_comp.columns:
+            try:
+                dm_totali = pd.to_numeric(df_comp[qta_col_nome], errors='coerce').fillna(0).sum()
+                dm_totali = int(dm_totali)
+            except:
+                dm_totali = 0
+
+        # SBS + DM totali
+        sbs_stringa = ""
         if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
+            sbs_stringa = f"SBS: {sbs_val}"
+        
+        dm_stringa = f"DM totali: {dm_totali}"
+        
+        sottotitolo_finale = sbs_stringa
+        if sottotitolo_finale:
+            sottotitolo_finale += f"    |    {dm_stringa}"
+        else:
+            sottotitolo_finale = dm_stringa
+
+        if sottotitolo_finale:
             pdf.set_font("Arial", 'B', 10)
             pdf.set_text_color(100, 100, 100)
-            pdf.cell(0, 5, txt=safe_str(f"SBS: {sbs_val}"), ln=True)
+            pdf.cell(0, 5, txt=safe_str(sottotitolo_finale), ln=True)
         
         pdf.ln(3)
         stampa_intestazione()
@@ -224,6 +248,10 @@ elif tipo_carta == "cartaintestata-SIS":
     carta_file = "cartaintestata-SIS.png"
 
 st.sidebar.markdown("---")
+st.sidebar.subheader("Opzioni PDF")
+mostra_qta_richieste = st.sidebar.checkbox("Mostra quantità kit richiesti", value=False)
+
+st.sidebar.markdown("---")
 st.sidebar.subheader("Personalizzazione Frontespizio")
 titolo_default = "Azienda ULSS n. 5 Polesana"
 sottotitolo_default = "PROGETTAZIONE, CON TECNICHE DI OTTIMIZZAZIONE, DEL PARCO DI DISPOSITIVI MEDICI RIUTILIZZABILI ED ACCESSORI DEI PRESIDI OSPEDALIERI DELLA AZIENDA ULSS N.5 POLESANA\nCIG B83F8F3019"
@@ -263,6 +291,9 @@ if uploaded_file:
             nome_kit = row['NUOVO NOME KIT'] if pd.notna(row.get('NUOVO NOME KIT')) else row.get('NOME KIT', 'N/A')
             nome_kit_orig = row.get('NOME KIT', 'N/A')
             
+            # Estrae la quantità richiesta dal presidio per questo kit nel foglio LISTA KIT
+            qta_richiesta = row.get(selected_sigla, '')
+            
             if comp_kit_col:
                 comp = df_comp[
                     (df_comp['CDU_COMP'] == str(cdu)) & 
@@ -282,7 +313,7 @@ if uploaded_file:
             elif 'SBS' in row and pd.notna(row['SBS']):
                 sbs_val = row['SBS']
             
-            lista_kit_per_pdf.append((nome_kit, sbs_val, comp, comp_qta_col))
+            lista_kit_per_pdf.append((nome_kit, sbs_val, comp, comp_qta_col, qta_richiesta))
         
         tutti_i_cdu_dati[cdu] = lista_kit_per_pdf
 
@@ -290,7 +321,7 @@ if uploaded_file:
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for cdu, kit_data in tutti_i_cdu_dati.items():
-                pdf_bytes = crea_pdf_cdu(cdu, selected_sigla, kit_data, carta_file, titolo_custom, sottotitolo_custom)
+                pdf_bytes = crea_pdf_cdu(cdu, selected_sigla, kit_data, carta_file, titolo_custom, sottotitolo_custom, mostra_qta_richieste)
                 safe_cdu_name = str(cdu).replace("/", "_").replace("\\", "_")
                 zip_file.writestr(f"{selected_sigla}_{safe_cdu_name}.pdf", pdf_bytes)
         
@@ -306,8 +337,10 @@ if uploaded_file:
     for cdu, lista_kit_per_pdf in tutti_i_cdu_dati.items():
         st.subheader(f"CDU: {cdu}")
         
-        for nome_kit, sbs_val, comp, qta_col_nome in lista_kit_per_pdf:
+        for nome_kit, sbs_val, comp, qta_col_nome, qta_richiesta in lista_kit_per_pdf:
             kit_text = f"**Kit:** {nome_kit}"
+            if mostra_qta_richieste and str(qta_richiesta).strip() != '':
+                kit_text += f" (Quantità kit richiesti: {qta_richiesta})"
             if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
                 kit_text += f" | **SBS:** {sbs_val}"
             st.write(kit_text)
@@ -320,7 +353,7 @@ if uploaded_file:
                 
             st.table(comp[cols_to_show])
         
-        pdf_data = crea_pdf_cdu(cdu, selected_sigla, lista_kit_per_pdf, carta_file, titolo_custom, sottotitolo_custom)
+        pdf_data = crea_pdf_cdu(cdu, selected_sigla, lista_kit_per_pdf, carta_file, titolo_custom, sottotitolo_custom, mostra_qta_richieste)
         st.download_button(
             label=f"📥 Scarica PDF CDU: {cdu}",
             data=pdf_data,
