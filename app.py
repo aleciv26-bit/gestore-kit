@@ -30,7 +30,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
     pdf.cell(0, 10, txt=safe_str(f"PRESIDIO: {presidio} - CDU: {cdu}"), ln=True, align='C')
     pdf.ln(3)
     
-    for nome_kit, sbs_val, df_comp in lista_kit_dati:
+    for nome_kit, sbs_val, df_comp, qta_col_nome in lista_kit_dati:
         if pdf.get_y() > 230:
             pdf.add_page()
 
@@ -40,26 +40,33 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
             kit_label += f" - SBS: {sbs_val}"
         pdf.cell(0, 7, txt=safe_str(kit_label), ln=True)
         
+        # Intestazione tabella con la colonna QUANTITÀ
         pdf.set_font("Arial", 'B', 9)
-        pdf.cell(40, 6, "FABBRICANTE", border=1)
-        pdf.cell(40, 6, "CODICE", border=1)
-        pdf.cell(120, 6, "DESCRIZIONE", border=1)
+        pdf.cell(35, 6, "FABBRICANTE", border=1)
+        pdf.cell(35, 6, "CODICE", border=1)
+        pdf.cell(105, 6, "DESCRIZIONE", border=1)
+        pdf.cell(25, 6, "Q.TA", border=1, align='C')
         pdf.ln()
         
         pdf.set_font("Arial", '', 8)
         for _, row in df_comp.iterrows():
             if pdf.get_y() > 245:
                 pdf.add_page()
+                # Ristampa intestazione tabella a pagina nuova
                 pdf.set_font("Arial", 'B', 9)
-                pdf.cell(40, 6, "FABBRICANTE", border=1)
-                pdf.cell(40, 6, "CODICE", border=1)
-                pdf.cell(120, 6, "DESCRIZIONE", border=1)
+                pdf.cell(35, 6, "FABBRICANTE", border=1)
+                pdf.cell(35, 6, "CODICE", border=1)
+                pdf.cell(105, 6, "DESCRIZIONE", border=1)
+                pdf.cell(25, 6, "Q.TA", border=1, align='C')
                 pdf.ln()
                 pdf.set_font("Arial", '', 8)
 
-            pdf.cell(40, 5, safe_str(row.get('FABBRICANTE', '')), border=1)
-            pdf.cell(40, 5, safe_str(row.get('CODICE', '')), border=1)
-            pdf.cell(120, 5, safe_str(row.get('DESCRIZIONE', '')), border=1)
+            qta_val = row.get(qta_col_nome, '') if qta_col_nome else ''
+
+            pdf.cell(35, 5, safe_str(row.get('FABBRICANTE', '')), border=1)
+            pdf.cell(35, 5, safe_str(row.get('CODICE', '')), border=1)
+            pdf.cell(105, 5, safe_str(row.get('DESCRIZIONE', '')), border=1)
+            pdf.cell(25, 5, safe_str(qta_val), border=1, align='C')
             pdf.ln()
         pdf.ln(4)
     
@@ -93,9 +100,12 @@ if uploaded_file:
     df_filtered = df_lista[pd.to_numeric(df_lista[selected_sigla], errors='coerce') > 0].copy()
     df_filtered['CDU_FINALE'] = df_filtered.apply(lambda row: row['NUOVO CDU'] if pd.notna(row.get('NUOVO CDU')) else row.get('CDU', 'N/A'), axis=1)
     
-    # Gestione flessibile delle colonne nel foglio di composizione
     comp_cdu_col = 'CDU' if 'CDU' in df_comp.columns else ('NUOVO CDU' if 'NUOVO CDU' in df_comp.columns else None)
     comp_kit_col = 'NOME KIT' if 'NOME KIT' in df_comp.columns else ('NUOVO NOME KIT' if 'NUOVO NOME KIT' in df_comp.columns else None)
+    
+    # Riconoscimento automatico della colonna quantità nel foglio di composizione
+    possible_qta_names = [c for c in df_comp.columns if any(x in str(c).upper() for x in ['QTA', 'Q.TA', 'QUANTIT'] )]
+    comp_qta_col = possible_qta_names[0] if possible_qta_names else None
 
     if comp_cdu_col:
         df_comp['CDU_COMP'] = df_comp[comp_cdu_col].astype(str).str.strip()
@@ -110,7 +120,6 @@ if uploaded_file:
             nome_kit = row['NUOVO NOME KIT'] if pd.notna(row.get('NUOVO NOME KIT')) else row.get('NOME KIT', 'N/A')
             nome_kit_orig = row.get('NOME KIT', 'N/A')
             
-            # Ricerca nel foglio di composizione usando la colonna corretta trovata
             if comp_kit_col:
                 comp = df_comp[
                     (df_comp['CDU_COMP'] == str(cdu)) & 
@@ -130,7 +139,7 @@ if uploaded_file:
             elif 'SBS' in row and pd.notna(row['SBS']):
                 sbs_val = row['SBS']
             
-            lista_kit_per_pdf.append((nome_kit, sbs_val, comp))
+            lista_kit_per_pdf.append((nome_kit, sbs_val, comp, comp_qta_col))
         
         tutti_i_cdu_dati[cdu] = lista_kit_per_pdf
 
@@ -154,13 +163,13 @@ if uploaded_file:
     for cdu, lista_kit_per_pdf in tutti_i_cdu_dati.items():
         st.subheader(f"CDU: {cdu}")
         
-        for nome_kit, sbs_val, comp in lista_kit_per_pdf:
+        for nome_kit, sbs_val, comp, qta_col_nome in lista_kit_per_pdf:
             kit_text = f"**Kit:** {nome_kit}"
             if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
                 kit_text += f" | **SBS:** {sbs_val}"
             st.write(kit_text)
             
-            cols_to_show = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
+            cols_to_show = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE', qta_col_nome] if c and c in comp.columns]
             st.table(comp[cols_to_show])
         
         pdf_data = crea_pdf_cdu(cdu, selected_sigla, lista_kit_per_pdf, carta_file)
