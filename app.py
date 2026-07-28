@@ -64,16 +64,14 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
             desc = safe_str(row.get('DESCRIZIONE', ''))
             qta_val = safe_str(row.get(qta_col_nome, '')) if qta_col_nome else ''
 
-            # Calcolo sicuro delle righe basato sulla larghezza reale della colonna descrizione (105 mm)
-            # A font Arial 8pt, un carattere occupa circa 1.8 - 2 mm di larghezza media.
-            # Usiamo una stima basata sui caratteri per riga (circa 52 caratteri per 105mm)
+            # Calcolo sicuro delle righe per la descrizione (circa 50 caratteri per riga a 8pt su 105mm)
             chars_per_line = 50
             lines_count = max(1, int(len(desc) / chars_per_line) + (1 if len(desc) % chars_per_line > 0 else 0))
             
-            # Altezza riga dinamica (4 mm per riga di testo + 2 mm di margine interno)
-            current_row_h = max(6, lines_count * 4 + 2)
+            # Altezza dinamica della riga (minimo 6 mm, oppure 4.5 mm per ogni riga di testo)
+            row_h = max(6, lines_count * 4.5 + 2)
 
-            if pdf.get_y() + current_row_h > 245:
+            if pdf.get_y() + row_h > 245:
                 pdf.add_page()
                 stampa_intestazione()
                 pdf.set_font("Arial", '', 8)
@@ -81,34 +79,46 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
             x_start = pdf.get_x()
             y_start = pdf.get_y()
 
-            # Disegniamo i rettangoli per tutte e 4 le colonne con la stessa altezza esatta
-            pdf.rect(x_start, y_start, col_w_fab, current_row_h)
-            pdf.rect(x_start + col_w_fab, y_start, col_w_cod, current_row_h)
-            pdf.rect(x_start + col_w_fab + col_w_cod, y_start, col_w_desc, current_row_h)
-            pdf.rect(x_start + col_w_fab + col_w_cod + col_w_desc, y_start, col_w_qta, current_row_h)
-
-            # Posizionamento verticale centrato per Fabbricante, Codice e Quantità
-            content_y_offset = (current_row_h - 4) / 2
+            # Stampiamo le 4 celle con la stessa altezza 'row_h' in modo che FPDF gestisca i bordi e l'allineamento pulito
+            # Per Fabbricante, Codice e Quantità usiamo il trucco di stampare cella con altezza riga e allineamento verticale centrale
+            # Poiché FPDF standard non centra verticalmente in cell(), calcoliamo il padding verticale esatto:
+            # un'altezza di riga standard o multi-riga viene gestita stampando con coordinate o cella multipla.
             
-            pdf.set_xy(x_start, y_start + content_y_offset)
+            # Usiamo multi_cell per la descrizione e cell per le altre con la stessa coordinata Y
+            pdf.set_xy(x_start, y_start)
+            
+            # Salviamo la posizione X iniziale
+            current_x = x_start
+            
+            # Fabbricante
+            pdf.rect(current_x, y_start, col_w_fab, row_h)
+            pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_fab, 4, fab, border=0, align='L')
+            current_x += col_w_fab
 
-            pdf.set_xy(x_start + col_w_fab, y_start + content_y_offset)
+            # Codice
+            pdf.rect(current_x, y_start, col_w_cod, row_h)
+            pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_cod, 4, cod, border=0, align='L')
+            current_x += col_w_cod
 
-            # Per la descrizione: se sta su 1 riga la centriamo verticalmente, se è multilinea la partiamo dall'alto con margine
+            # Descrizione (se 1 riga la centriamo perfettamente, se più righe la distendiamo dall'alto con margine leggero)
+            pdf.rect(current_x, y_start, col_w_desc, row_h)
             if lines_count <= 1:
-                pdf.set_xy(x_start + col_w_fab + col_w_cod, y_start + content_y_offset)
+                pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
                 pdf.cell(col_w_desc, 4, desc, border=0, align='L')
             else:
-                pdf.set_xy(x_start + col_w_fab + col_w_cod, y_start + 1)
+                pdf.set_xy(current_x, y_start + 1.5)
                 pdf.multi_cell(col_w_desc, 4, desc, border=0, align='L')
+            current_x += col_w_desc
 
-            pdf.set_xy(x_start + col_w_fab + col_w_cod + col_w_desc, y_start + content_y_offset)
+            # Quantità
+            pdf.rect(current_x, y_start, col_w_qta, row_h)
+            pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_qta, 4, qta_val, border=0, align='C')
 
             # Spostiamo il cursore alla riga successiva
-            pdf.set_xy(x_start, y_start + current_row_h)
+            pdf.set_xy(x_start, y_start + row_h)
             pdf.ln(0)
 
         pdf.ln(4)
