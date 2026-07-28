@@ -58,7 +58,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     pdf.cell(0, 7, txt=safe_str(f"PRESIDIO OSPEDALIERO DI {nome_presidio_pulito}"), ln=True, align='C')
     pdf.ln(4)
 
-    # 4. Reparto dinamico basato sul CDU (es. SO CH. VASCOLARE)
+    # 4. Reparto dinamico basato sul CDU
     pdf.set_font("Arial", 'B', 13)
     pdf.set_text_color(26, 54, 93)
     pdf.cell(0, 7, txt=safe_str(str(cdu)), ln=True, align='C')
@@ -79,15 +79,14 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     pdf.cell(60, 5, "Firma per approvazione", align='C')
 
     # --- DALLE PAGINE SUCCESSIVE: COMPOSIZIONE KIT ---
-    # Dimensioni colonne ottimizzate per una larghezza totale di 190mm (centrato tra X=10 e X=200)
     col_w_qta = 18
     col_w_fab = 35
     col_w_cod = 35
     col_w_desc = 102
     
-    table_total_width = col_w_qta + col_w_fab + col_w_cod + col_w_desc # 190 mm
+    table_total_width = col_w_qta + col_w_fab + col_w_cod + col_w_desc
     page_width = 210
-    left_margin = (page_width - table_total_width) / 2 # 10 mm esatti
+    left_margin = (page_width - table_total_width) / 2
 
     def stampa_intestazione():
         pdf.set_x(left_margin)
@@ -101,17 +100,10 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
 
     pdf.is_prima_pagina = False
     pdf.set_margins(left_margin, 45, left_margin)
-    pdf.add_page()
 
-    # Titolo di testata per i kit
-    pdf.set_font("Arial", 'B', 13)
-    pdf.set_text_color(26, 54, 93)
-    pdf.cell(0, 8, txt=safe_str(f"PRESIDIO: {nome_presidio_pulito} - CDU: {cdu}"), ln=True, align='C')
-    pdf.ln(3)
-
-    for nome_kit, sbs_val, df_comp, qta_col_nome in lista_kit_dati:
-        if pdf.get_y() > 230:
-            pdf.add_page()
+    # Ciclo sui kit: ognuno parte su una pagina nuova
+    for idx, (nome_kit, sbs_val, df_comp, qta_col_nome) in enumerate(lista_kit_dati):
+        pdf.add_page()
 
         pdf.set_font("Arial", 'B', 11)
         pdf.set_text_color(0, 0, 0)
@@ -119,6 +111,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
         if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
             kit_label += f" - SBS: {sbs_val}"
         pdf.cell(0, 7, txt=safe_str(kit_label), ln=True)
+        pdf.ln(2)
         
         stampa_intestazione()
         
@@ -128,7 +121,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             cod = safe_str(row.get('CODICE', ''))
             desc = safe_str(row.get('DESCRIZIONE', ''))
             
-            # Gestione quantità come numero intero senza virgola
             qta_raw = row.get(qta_col_nome, '') if qta_col_nome else ''
             try:
                 if pd.notna(qta_raw) and str(qta_raw).strip() != '':
@@ -151,7 +143,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             y_start = pdf.get_y()
             current_x = x_start
             
-            # 1. Quantità (Prima colonna)
+            # 1. Quantità
             pdf.rect(current_x, y_start, col_w_qta, row_h)
             pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_qta, 4, qta_val, border=0, align='C')
@@ -180,8 +172,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
 
             pdf.set_xy(x_start, y_start + row_h)
             pdf.ln(0)
-
-        pdf.ln(4)
     
     return pdf.output(dest='S').encode('latin-1')
 
@@ -289,7 +279,6 @@ if uploaded_file:
                 kit_text += f" | **SBS:** {sbs_val}"
             st.write(kit_text)
             
-            # Mostriamo la tabella a schermo con la quantità spostata in prima posizione per coerenza visiva
             if qta_col_nome and qta_col_nome in comp.columns:
                 other_cols = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
                 cols_to_show = [qta_col_nome] + other_cols
