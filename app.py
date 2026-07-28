@@ -136,7 +136,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     for nome_kit, sbs_val, df_comp, qta_col_nome, qta_richiesta in lista_kit_dati:
         pdf.add_page()
 
-        # Titolo Kit + Quantità Kit Richiesti (se abilitato)
         titolo_stringa = f"Kit: {nome_kit}"
         if mostra_qta_richieste and qta_richiesta is not None and str(qta_richiesta).strip() != '':
             titolo_stringa += f"  -  Quantità kit richiesti: {qta_richiesta}"
@@ -145,7 +144,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
         pdf.set_text_color(26, 54, 93)
         pdf.cell(0, 6, txt=safe_str(titolo_stringa), ln=True)
         
-        # Calcolo DM totali (somma delle quantità dei dispositivi nella tabella)
         dm_totali = 0
         if qta_col_nome and not df_comp.empty and qta_col_nome in df_comp.columns:
             try:
@@ -154,7 +152,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             except:
                 dm_totali = 0
 
-        # SBS + DM totali
         sbs_stringa = ""
         if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
             sbs_stringa = f"SBS: {sbs_val}"
@@ -291,7 +288,6 @@ if uploaded_file:
             nome_kit = row['NUOVO NOME KIT'] if pd.notna(row.get('NUOVO NOME KIT')) else row.get('NOME KIT', 'N/A')
             nome_kit_orig = row.get('NOME KIT', 'N/A')
             
-            # Estrae la quantità richiesta dal presidio per questo kit nel foglio LISTA KIT
             qta_richiesta = row.get(selected_sigla, '')
             
             if comp_kit_col:
@@ -335,30 +331,36 @@ if uploaded_file:
         st.markdown("---")
 
     for cdu, lista_kit_per_pdf in tutti_i_cdu_dati.items():
-        st.subheader(f"CDU: {cdu}")
-        
-        for nome_kit, sbs_val, comp, qta_col_nome, qta_richiesta in lista_kit_per_pdf:
-            kit_text = f"**Kit:** {nome_kit}"
-            if mostra_qta_richieste and str(qta_richiesta).strip() != '':
-                kit_text += f" (Quantità kit richiesti: {qta_richiesta})"
-            if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
-                kit_text += f" | **SBS:** {sbs_val}"
-            st.write(kit_text)
-            
-            if qta_col_nome and qta_col_nome in comp.columns:
-                other_cols = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
-                cols_to_show = [qta_col_nome] + other_cols
-            else:
-                cols_to_show = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
-                
-            st.table(comp[cols_to_show])
-        
         pdf_data = crea_pdf_cdu(cdu, selected_sigla, lista_kit_per_pdf, carta_file, titolo_custom, sottotitolo_custom, mostra_qta_richieste)
-        st.download_button(
-            label=f"📥 Scarica PDF CDU: {cdu}",
-            data=pdf_data,
-            file_name=f"{selected_sigla}_{cdu}.pdf",
-            mime="application/pdf",
-            key=f"btn_{cdu}"
-        )
+        
+        # Utilizziamo un expander per CDU con il titolo e il pulsante di download in evidenza
+        with st.expander(f"CDU: {cdu}"):
+            col_info, col_btn = st.columns([3, 1])
+            with col_btn:
+                st.download_button(
+                    label=f"📥 Scarica PDF CDU: {cdu}",
+                    data=pdf_data,
+                    file_name=f"{selected_sigla}_{cdu}.pdf",
+                    mime="application/pdf",
+                    key=f"btn_{cdu}"
+                )
+            
+            st.markdown("---")
+            
+            for nome_kit, sbs_val, comp, qta_col_nome, qta_richiesta in lista_kit_per_pdf:
+                kit_text = f"**Kit:** {nome_kit}"
+                if mostra_qta_richieste and str(qta_richiesta).strip() != '':
+                    kit_text += f" (Quantità kit richiesti: {qta_richiesta})"
+                if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
+                    kit_text += f" | **SBS:** {sbs_val}"
+                st.write(kit_text)
+                
+                if qta_col_nome and qta_col_nome in comp.columns:
+                    other_cols = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
+                    cols_to_show = [qta_col_nome] + other_cols
+                else:
+                    cols_to_show = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE'] if c in comp.columns]
+                    
+                st.table(comp[cols_to_show])
+        
         st.markdown("---")
