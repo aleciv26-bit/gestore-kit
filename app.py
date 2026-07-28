@@ -5,22 +5,26 @@ import zipfile
 import io
 import os
 
-class PDFConCartaIntestata(FPDF):
-    def __init__(self, carta_file=None, *args, **kwargs):
+class PDFConCopertinaEIntestata(FPDF):
+    def __init__(self, carta_file=None, is_prima_pagina=True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.carta_file = carta_file
+        self.is_prima_pagina = is_prima_pagina
 
     def header(self):
         if self.carta_file and os.path.exists(self.carta_file):
             self.image(self.carta_file, x=0, y=0, w=210)
-        self.set_y(45)
+        
+        # Dalla seconda pagina in poi, impostiamo il margine superiore standard
+        if not self.is_prima_pagina:
+            self.set_y(45)
 
     def footer(self):
         pass
 
-def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
-    pdf = PDFConCartaIntestata(carta_file=carta_file)
-    pdf.set_margins(10, 45, 10)
+def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sottotitolo_custom):
+    pdf = PDFConCopertinaEIntestata(carta_file=carta_file, is_prima_pagina=True)
+    pdf.set_margins(10, 20, 10)
     pdf.add_page()
     
     def safe_str(text):
@@ -28,10 +32,56 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
             return ""
         return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-    pdf.set_font("Arial", 'B', 15)
-    pdf.cell(0, 10, txt=safe_str(f"PRESIDIO: {presidio} - CDU: {cdu}"), ln=True, align='C')
-    pdf.ln(3)
+    # --- PRIMA PAGINA (COPERTINA / FRONTESPIZIO) ---
+    pdf.set_y(55) # Spazio sotto l'immagine della carta intestata
+
+    # 1. Titolo principale (es. Azienda ULSS n. 5 Polesana)
+    if titolo_custom:
+        pdf.set_font("Arial", 'B', 18)
+        pdf.set_text_color(26, 54, 93) # Blu scuro elegante
+        pdf.multi_cell(0, 8, txt=safe_str(titolo_custom), align='C')
+        pdf.ln(12)
+
+    # 2. Sottotitolo / Oggetto (es. PROGETTAZIONE...)
+    if sottotitolo_custom:
+        pdf.set_font("Arial", 'B', 10)
+        pdf.set_text_color(26, 54, 93)
+        pdf.multi_cell(0, 5.5, txt=safe_str(sottotitolo_custom), align='C')
+        pdf.ln(15)
+
+    # 3. Presidio Ospedaliero automatico (es. PRESIDIO OSPEDALIERO DI ADRIA)
+    # Puliamo la stringa del presidio (es. "QTA_ADRIA" -> "ADRIA")
+    nome_presidio_pulito = presidio.replace("QTA_", "").replace("QTA.", "").replace("QUANTITA_", "").replace("QUANTITA", "").strip().upper()
+    if not nome_presidio_pulito:
+        nome_presidio_pulito = presidio.upper()
     
+    pdf.set_font("Arial", 'B', 13)
+    pdf.set_text_color(26, 54, 93)
+    pdf.cell(0, 7, txt=safe_str(f"PRESIDIO OSPEDALIERO DI {nome_presidio_pulito}"), ln=True, align='C')
+    pdf.ln(4)
+
+    # 4. Reparto automatico (es. SO GINECOLOGIA)
+    pdf.set_font("Arial", 'B', 13)
+    pdf.set_text_color(26, 54, 93)
+    pdf.cell(0, 7, txt=safe_str("SO GINECOLOGIA"), ln=True, align='C')
+
+    # 5. Sezione Data e Firma per approvazione in fondo alla prima pagina
+    pdf.set_y(225)
+    pdf.set_font("Arial", '', 10)
+    pdf.set_text_color(0, 0, 0)
+    
+    # Linee per data e firma
+    y_firma = pdf.get_y()
+    pdf.line(30, y_firma, 90, y_firma)
+    pdf.line(120, y_firma, 180, y_firma)
+    
+    pdf.set_y(y_firma + 2)
+    pdf.set_x(30)
+    pdf.cell(60, 5, "Data", align='C')
+    pdf.set_x(120)
+    pdf.cell(60, 5, "Firma per approvazione", align='C')
+
+    # --- DALLE PAGINE SUCCESSIVE: COMPOSIZIONE KIT ---
     col_w_fab = 35
     col_w_cod = 35
     col_w_desc = 105
@@ -39,17 +89,30 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
 
     def stampa_intestazione():
         pdf.set_font("Arial", 'B', 9)
+        pdf.set_text_color(0, 0, 0)
         pdf.cell(col_w_fab, 6, "FABBRICANTE", border=1)
         pdf.cell(col_w_cod, 6, "CODICE", border=1)
         pdf.cell(col_w_desc, 6, "DESCRIZIONE", border=1)
         pdf.cell(col_w_qta, 6, "Q.TA", border=1, align='C')
         pdf.ln()
 
+    # Passiamo alla pagina successiva per i kit
+    pdf.is_prima_pagina = False
+    pdf.set_margins(10, 45, 10)
+    pdf.add_page()
+
+    # Titolo di testata per i kit
+    pdf.set_font("Arial", 'B', 13)
+    pdf.set_text_color(26, 54, 93)
+    pdf.cell(0, 8, txt=safe_str(f"PRESIDIO: {nome_presidio_pulito} - CDU: {cdu}"), ln=True, align='C')
+    pdf.ln(3)
+
     for nome_kit, sbs_val, df_comp, qta_col_nome in lista_kit_dati:
         if pdf.get_y() > 230:
             pdf.add_page()
 
         pdf.set_font("Arial", 'B', 11)
+        pdf.set_text_color(0, 0, 0)
         kit_label = f"Kit: {nome_kit}"
         if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
             kit_label += f" - SBS: {sbs_val}"
@@ -64,11 +127,8 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
             desc = safe_str(row.get('DESCRIZIONE', ''))
             qta_val = safe_str(row.get(qta_col_nome, '')) if qta_col_nome else ''
 
-            # Calcolo sicuro delle righe per la descrizione (circa 50 caratteri per riga a 8pt su 105mm)
             chars_per_line = 50
             lines_count = max(1, int(len(desc) / chars_per_line) + (1 if len(desc) % chars_per_line > 0 else 0))
-            
-            # Altezza dinamica della riga (minimo 6 mm, oppure 4.5 mm per ogni riga di testo)
             row_h = max(6, lines_count * 4.5 + 2)
 
             if pdf.get_y() + row_h > 245:
@@ -78,16 +138,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
 
             x_start = pdf.get_x()
             y_start = pdf.get_y()
-
-            # Stampiamo le 4 celle con la stessa altezza 'row_h' in modo che FPDF gestisca i bordi e l'allineamento pulito
-            # Per Fabbricante, Codice e Quantità usiamo il trucco di stampare cella con altezza riga e allineamento verticale centrale
-            # Poiché FPDF standard non centra verticalmente in cell(), calcoliamo il padding verticale esatto:
-            # un'altezza di riga standard o multi-riga viene gestita stampando con coordinate o cella multipla.
-            
-            # Usiamo multi_cell per la descrizione e cell per le altre con la stessa coordinata Y
-            pdf.set_xy(x_start, y_start)
-            
-            # Salviamo la posizione X iniziale
             current_x = x_start
             
             # Fabbricante
@@ -102,7 +152,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
             pdf.cell(col_w_cod, 4, cod, border=0, align='L')
             current_x += col_w_cod
 
-            # Descrizione (se 1 riga la centriamo perfettamente, se più righe la distendiamo dall'alto con margine leggero)
+            # Descrizione
             pdf.rect(current_x, y_start, col_w_desc, row_h)
             if lines_count <= 1:
                 pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
@@ -117,7 +167,6 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file):
             pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_qta, 4, qta_val, border=0, align='C')
 
-            # Spostiamo il cursore alla riga successiva
             pdf.set_xy(x_start, y_start + row_h)
             pdf.ln(0)
 
@@ -139,6 +188,14 @@ if tipo_carta == "cartaintestata-HE":
     carta_file = "cartaintestata-HE.png"
 elif tipo_carta == "cartaintestata-SIS":
     carta_file = "cartaintestata-SIS.png"
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Personalizzazione Frontespizio")
+titolo_default = "Azienda ULSS n. 5 Polesana"
+sottotitolo_default = "PROGETTAZIONE, CON TECNICHE DI OTTIMIZZAZIONE, DEL PARCO DI DISPOSITIVI MEDICI RIUTILIZZABILI ED ACCESSORI DEI PRESIDI OSPEDALIERI DELLA AZIENDA ULSS N.5 POLESANA\nCIG B83F8F3019"
+
+titolo_custom = st.sidebar.text_input("Titolo Principale", value=titolo_default)
+sottotitolo_custom = st.sidebar.text_area("Sottotitolo / Oggetto", value=sottotitolo_default, height=100)
 
 uploaded_file = st.file_uploader("Carica il file Excel", type=["xlsx"])
 
@@ -199,7 +256,7 @@ if uploaded_file:
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for cdu, kit_data in tutti_i_cdu_dati.items():
-                pdf_bytes = crea_pdf_cdu(cdu, selected_sigla, kit_data, carta_file)
+                pdf_bytes = crea_pdf_cdu(cdu, selected_sigla, kit_data, carta_file, titolo_custom, sottotitolo_custom)
                 safe_cdu_name = str(cdu).replace("/", "_").replace("\\", "_")
                 zip_file.writestr(f"{selected_sigla}_{safe_cdu_name}.pdf", pdf_bytes)
         
@@ -224,7 +281,7 @@ if uploaded_file:
             cols_to_show = [c for c in ['FABBRICANTE', 'CODICE', 'DESCRIZIONE', qta_col_nome] if c and c in comp.columns]
             st.table(comp[cols_to_show])
         
-        pdf_data = crea_pdf_cdu(cdu, selected_sigla, lista_kit_per_pdf, carta_file)
+        pdf_data = crea_pdf_cdu(cdu, selected_sigla, lista_kit_per_pdf, carta_file, titolo_custom, sottotitolo_custom)
         st.download_button(
             label=f"📥 Scarica PDF CDU: {cdu}",
             data=pdf_data,
