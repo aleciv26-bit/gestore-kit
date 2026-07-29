@@ -16,7 +16,7 @@ class PDFConPaginazioneEIntestata(FPDF):
             self.image(self.carta_file, x=0, y=0, w=210)
         
         if not self.is_prima_pagina:
-            self.set_y(45)
+            self.set_y(40)
 
     def footer(self):
         self.set_y(-15)
@@ -36,20 +36,20 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             return ""
         return str(text).encode('latin-1', 'replace').decode('latin-1')
 
-    # --- PAGINA 1: FRONTESPIZIO ---
-    pdf.set_y(55)
+    # --- PAGINA 1: FRONTESPIZIO (Centrato nello spazio utile) ---
+    pdf.set_y(68)
 
     if titolo_custom:
         pdf.set_font("Arial", 'B', 18)
         pdf.set_text_color(26, 54, 93)
         pdf.multi_cell(0, 8, txt=safe_str(titolo_custom), align='C')
-        pdf.ln(12)
+        pdf.ln(10)
 
     if sottotitolo_custom:
         pdf.set_font("Arial", 'B', 10)
         pdf.set_text_color(26, 54, 93)
         pdf.multi_cell(0, 5.5, txt=safe_str(sottotitolo_custom), align='C')
-        pdf.ln(15)
+        pdf.ln(12)
 
     nome_presidio_pulito = presidio.replace("QTA_", "").replace("QTA.", "").replace("QUANTITA_", "").replace("QUANTITA", "").strip().upper()
     if not nome_presidio_pulito:
@@ -58,7 +58,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     pdf.set_font("Arial", 'B', 13)
     pdf.set_text_color(26, 54, 93)
     pdf.cell(0, 7, txt=safe_str(f"PRESIDIO OSPEDALIERO DI {nome_presidio_pulito}"), ln=True, align='C')
-    pdf.ln(4)
+    pdf.ln(3)
 
     pdf.set_font("Arial", 'B', 13)
     pdf.set_text_color(26, 54, 93)
@@ -80,7 +80,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
 
     # --- PAGINA 2: TABELLA RIEPILOGATIVA KIT E SBS ---
     pdf.is_prima_pagina = False
-    pdf.set_margins(10, 45, 10)
+    pdf.set_margins(10, 40, 10)
     pdf.add_page()
 
     col_w_nome_kit = 140
@@ -89,23 +89,23 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     left_margin_summary = (210 - table_w_summary) / 2
 
     pdf.set_x(left_margin_summary)
-    pdf.set_font("Arial", 'B', 10)
+    pdf.set_font("Arial", 'B', 9)
     pdf.set_text_color(26, 54, 93)
-    pdf.cell(col_w_nome_kit, 7, "NOME KIT", border=1)
-    pdf.cell(col_w_sbs, 7, "SBS", border=1)
+    pdf.cell(col_w_nome_kit, 6, "NOME KIT", border=1)
+    pdf.cell(col_w_sbs, 6, "SBS", border=1)
     pdf.ln()
 
-    pdf.set_font("Arial", '', 9)
+    pdf.set_font("Arial", '', 8.5)
     pdf.set_text_color(0, 0, 0)
     for nome_kit, sbs_val, _, _, _ in lista_kit_dati:
         pdf.set_x(left_margin_summary)
-        pdf.cell(col_w_nome_kit, 6, safe_str(nome_kit), border=1)
-        pdf.cell(col_w_sbs, 6, safe_str(sbs_val), border=1)
+        pdf.cell(col_w_nome_kit, 5.2, safe_str(nome_kit), border=1)
+        pdf.cell(col_w_sbs, 5.2, safe_str(sbs_val), border=1)
         pdf.ln()
 
-    # --- PAGINA 3: TESTO INTRODUTTIVO DELLE DISTINTE ---
+    # --- PAGINA 3: TESTO INTRODUTTIVO DELLE DISTINTE (Più in alto) ---
     pdf.add_page()
-    pdf.set_y(60)
+    pdf.set_y(44)
     pdf.set_left_margin(20)
     pdf.set_right_margin(20)
     pdf.set_font("Arial", 'B', 11)
@@ -126,12 +126,12 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
         pdf.set_font("Arial", 'B', 9)
         pdf.set_text_color(0, 0, 0)
         pdf.cell(col_w_qta, 6, "Q.TA", border=1, align='C')
-        pdf.cell(col_w_fab, 6, "FABBRICANTE", border=1)
-        pdf.cell(col_w_cod, 6, "CODICE", border=1)
-        pdf.cell(col_w_desc, 6, "DESCRIZIONE", border=1)
+        pdf.cell(col_w_fab, 6, "FABBRICANTE", border=1, align='C')
+        pdf.cell(col_w_cod, 6, "CODICE", border=1, align='C')
+        pdf.cell(col_w_desc, 6, "DESCRIZIONE", border=1, align='C')
         pdf.ln()
 
-    pdf.set_margins(left_margin, 45, left_margin)
+    pdf.set_margins(left_margin, 40, left_margin)
 
     for nome_kit, sbs_val, df_comp, qta_col_nome, qta_richiesta in lista_kit_dati:
         pdf.add_page()
@@ -201,28 +201,32 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             y_start = pdf.get_y()
             current_x = x_start
             
+            # Q.TA (Centrato)
             pdf.rect(current_x, y_start, col_w_qta, row_h)
             pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_qta, 4, qta_val, border=0, align='C')
             current_x += col_w_qta
 
+            # FABBRICANTE (Allineato a sinistra nel contenuto, intestazione ora centrata)
             pdf.rect(current_x, y_start, col_w_fab, row_h)
-            pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
-            pdf.cell(col_w_fab, 4, fab, border=0, align='L')
+            pdf.set_xy(current_x + 1, y_start + (row_h - 4) / 2)
+            pdf.cell(col_w_fab - 2, 4, fab, border=0, align='L')
             current_x += col_w_fab
 
+            # CODICE (Allineato a sinistra nel contenuto, intestazione ora centrata)
             pdf.rect(current_x, y_start, col_w_cod, row_h)
-            pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
-            pdf.cell(col_w_cod, 4, cod, border=0, align='L')
+            pdf.set_xy(current_x + 1, y_start + (row_h - 4) / 2)
+            pdf.cell(col_w_cod - 2, 4, cod, border=0, align='L')
             current_x += col_w_cod
 
+            # DESCRIZIONE (Allineato a sinistra nel contenuto, intestazione ora centrata)
             pdf.rect(current_x, y_start, col_w_desc, row_h)
             if lines_count <= 1:
-                pdf.set_xy(current_x, y_start + (row_h - 4) / 2)
-                pdf.cell(col_w_desc, 4, desc, border=0, align='L')
+                pdf.set_xy(current_x + 1, y_start + (row_h - 4) / 2)
+                pdf.cell(col_w_desc - 2, 4, desc, border=0, align='L')
             else:
-                pdf.set_xy(current_x, y_start + 1.5)
-                pdf.multi_cell(col_w_desc, 4, desc, border=0, align='L')
+                pdf.set_xy(current_x + 1, y_start + 1.5)
+                pdf.multi_cell(col_w_desc - 2, 4, desc, border=0, align='L')
 
             pdf.set_xy(x_start, y_start + row_h)
             pdf.ln(0)
@@ -333,7 +337,6 @@ if uploaded_file:
     for cdu, lista_kit_per_pdf in tutti_i_cdu_dati.items():
         pdf_data = crea_pdf_cdu(cdu, selected_sigla, lista_kit_per_pdf, carta_file, titolo_custom, sottotitolo_custom, mostra_qta_richieste)
         
-        # Utilizziamo un expander per CDU con il titolo e il pulsante di download in evidenza
         with st.expander(f"CDU: {cdu}"):
             col_info, col_btn = st.columns([3, 1])
             with col_btn:
