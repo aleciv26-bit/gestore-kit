@@ -78,7 +78,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     pdf.set_x(120)
     pdf.cell(60, 5, "Firma per approvazione", align='C')
 
-    # --- PAGINA 2: TABELLA RIEPILOGATIVA KIT E SBS ---
+    # --- PAGINA 2+: TABELLA RIEPILOGATIVA KIT E SBS (Con gestione multi-pagina) ---
     pdf.is_prima_pagina = False
     pdf.set_margins(10, 40, 10)
     pdf.add_page()
@@ -88,22 +88,33 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     table_w_summary = col_w_nome_kit + col_w_sbs
     left_margin_summary = (210 - table_w_summary) / 2
 
-    pdf.set_x(left_margin_summary)
-    pdf.set_font("Arial", 'B', 9)
-    pdf.set_text_color(26, 54, 93)
-    pdf.cell(col_w_nome_kit, 6, "NOME KIT", border=1)
-    pdf.cell(col_w_sbs, 6, "SBS", border=1)
-    pdf.ln()
-
-    pdf.set_font("Arial", '', 8.5)
-    pdf.set_text_color(0, 0, 0)
-    for nome_kit, sbs_val, _, _, _ in lista_kit_dati:
+    def stampa_intestazione_summary():
         pdf.set_x(left_margin_summary)
-        pdf.cell(col_w_nome_kit, 5.2, safe_str(nome_kit), border=1)
-        pdf.cell(col_w_sbs, 5.2, safe_str(sbs_val), border=1)
+        pdf.set_font("Arial", 'B', 9)
+        pdf.set_text_color(26, 54, 93)
+        pdf.cell(col_w_nome_kit, 6, "NOME KIT", border=1)
+        pdf.cell(col_w_sbs, 6, "SBS", border=1)
         pdf.ln()
 
-    # --- PAGINA 3: TESTO INTRODUTTIVO DELLE DISTINTE (Più in alto) ---
+    stampa_intestazione_summary()
+
+    pdf.set_font("Arial", '', 9)
+    pdf.set_text_color(0, 0, 0)
+    
+    row_height = 6.0
+    for nome_kit, sbs_val, _, _, _ in lista_kit_dati:
+        if pdf.get_y() + row_height > 250:
+            pdf.add_page()
+            stampa_intestazione_summary()
+            pdf.set_font("Arial", '', 9)
+            pdf.set_text_color(0, 0, 0)
+
+        pdf.set_x(left_margin_summary)
+        pdf.cell(col_w_nome_kit, row_height, safe_str(nome_kit), border=1)
+        pdf.cell(col_w_sbs, row_height, safe_str(sbs_val), border=1)
+        pdf.ln()
+
+    # --- PAGINA SUCCESSIVA: TESTO INTRODUTTIVO DELLE DISTINTE ---
     pdf.add_page()
     pdf.set_y(44)
     pdf.set_left_margin(20)
@@ -121,7 +132,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
     table_total_width = col_w_qta + col_w_fab + col_w_cod + col_w_desc
     left_margin = (210 - table_total_width) / 2
 
-    def stampa_intestazione():
+    def stampa_intestazione_dettaglio():
         pdf.set_x(left_margin)
         pdf.set_font("Arial", 'B', 9)
         pdf.set_text_color(0, 0, 0)
@@ -140,9 +151,9 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
         if mostra_qta_richieste and qta_richiesta is not None and str(qta_richiesta).strip() != '':
             titolo_stringa += f"  -  Quantità kit richiesti: {qta_richiesta}"
 
-        pdf.set_font("Arial", 'B', 13)
+        pdf.set_font("Arial", 'B', 15)
         pdf.set_text_color(26, 54, 93)
-        pdf.cell(0, 6, txt=safe_str(titolo_stringa), ln=True)
+        pdf.cell(0, 7, txt=safe_str(titolo_stringa), ln=True)
         
         dm_totali = 0
         if qta_col_nome and not df_comp.empty and qta_col_nome in df_comp.columns:
@@ -156,11 +167,11 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
         if sbs_val and str(sbs_val).lower() != 'nan' and str(sbs_val).strip() != '':
             sbs_stringa = f"SBS: {sbs_val}"
         
-        dm_stringa = f"DM totali: {dm_totali}"
+        dm_stringa = f"DM TOTALI: {dm_totali}"
         
         sottotitolo_finale = sbs_stringa
         if sottotitolo_finale:
-            sottotitolo_finale += f"    |    {dm_stringa}"
+            sottotitolo_finale += f"  -  {dm_stringa}"
         else:
             sottotitolo_finale = dm_stringa
 
@@ -170,7 +181,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             pdf.cell(0, 5, txt=safe_str(sottotitolo_finale), ln=True)
         
         pdf.ln(3)
-        stampa_intestazione()
+        stampa_intestazione_dettaglio()
         
         pdf.set_font("Arial", '', 8)
         pdf.set_text_color(0, 0, 0)
@@ -194,7 +205,7 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
 
             if pdf.get_y() + row_h > 245:
                 pdf.add_page()
-                stampa_intestazione()
+                stampa_intestazione_dettaglio()
                 pdf.set_font("Arial", '', 8)
 
             x_start = left_margin
@@ -207,19 +218,19 @@ def crea_pdf_cdu(cdu, presidio, lista_kit_dati, carta_file, titolo_custom, sotto
             pdf.cell(col_w_qta, 4, qta_val, border=0, align='C')
             current_x += col_w_qta
 
-            # FABBRICANTE (Allineato a sinistra nel contenuto, intestazione ora centrata)
+            # FABBRICANTE (Allineato a sinistra nel contenuto, intestazione centrata)
             pdf.rect(current_x, y_start, col_w_fab, row_h)
             pdf.set_xy(current_x + 1, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_fab - 2, 4, fab, border=0, align='L')
             current_x += col_w_fab
 
-            # CODICE (Allineato a sinistra nel contenuto, intestazione ora centrata)
+            # CODICE (Allineato a sinistra nel contenuto, intestazione centrata)
             pdf.rect(current_x, y_start, col_w_cod, row_h)
             pdf.set_xy(current_x + 1, y_start + (row_h - 4) / 2)
             pdf.cell(col_w_cod - 2, 4, cod, border=0, align='L')
             current_x += col_w_cod
 
-            # DESCRIZIONE (Allineato a sinistra nel contenuto, intestazione ora centrata)
+            # DESCRIZIONE (Allineato a sinistra nel contenuto, intestazione centrata)
             pdf.rect(current_x, y_start, col_w_desc, row_h)
             if lines_count <= 1:
                 pdf.set_xy(current_x + 1, y_start + (row_h - 4) / 2)
